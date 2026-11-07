@@ -1,0 +1,294 @@
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("fonts/barlow-semi-condensed-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("fonts/barlow-semi-condensed-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Barlow Semi Condensed";
+  src: url("fonts/barlow-semi-condensed-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+/* Field-radio panel: olive enamel, bone stencil, amber indicator lamps. */
+:root {
+  --enamel: #2f3427;
+  --plate: #3b4232;
+  --plate-edge: #4b5340;
+  --lamp-off: #23271d;
+  --bone: #e6e1cc;
+  --bone-dim: #a9aa92;
+  --amber: #ffb547;
+  --hit: #b9d48a;
+  --miss: #ef6a4f;
+
+  --font: "Barlow Semi Condensed", "Bahnschrift", "DIN Alternate", "Arial Narrow", sans-serif;
+  --step--1: 0.875rem;
+  --step-0: 1.0625rem;
+  --step-1: 1.25rem;
+  --step-2: 1.5rem;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--enamel);
+  color: var(--bone);
+  font: 400 var(--step-0) / 1.45 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, p { margin: 0; }
+
+kbd {
+  font: 500 var(--step--1) var(--font);
+  padding: 0.05em 0.45em;
+  border: 1px solid var(--plate-edge);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--plate);
+  color: var(--bone);
+}
+
+button {
+  font: 500 var(--step-0) var(--font);
+  color: var(--bone);
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+/* Top bar ---------------------------------------------------------------- */
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5rem;
+  padding: 1.1rem clamp(1rem, 4vw, 2.5rem);
+}
+
+.wordmark {
+  font-size: var(--step-2);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.readout {
+  color: var(--bone-dim);
+  margin-right: auto;
+}
+
+.ghost {
+  background: none;
+  border: 1px solid var(--plate-edge);
+  border-radius: 6px;
+  padding: 0.3rem 0.9rem;
+}
+.ghost:hover { border-color: var(--bone-dim); }
+
+.primary {
+  background: var(--amber);
+  color: var(--enamel);
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 1.2rem;
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 60rem);
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2.5rem) 2rem;
+}
+
+/* Stage: the character being drilled ----------------------------------------- */
+
+.stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 0 3rem;
+  min-height: 22rem;
+}
+
+.status {
+  font-size: var(--step-1);
+  min-height: 1.45em;
+  font-weight: 500;
+  color: var(--bone-dim);
+}
+
+.glyph {
+  font-size: clamp(7rem, 24vw, 14rem);
+  font-weight: 600;
+  line-height: 1;
+  height: 1em;
+  margin: 0.5rem 0 0.75rem;
+  transition: color 120ms ease-out;
+}
+.glyph.hit { color: var(--hit); }
+.status.miss { color: var(--miss); }
+.glyph.intro { color: var(--amber); }
+
+.detail {
+  max-width: 40rem;
+  min-height: 1.45em;
+  font-size: var(--step-1);
+}
+.detail .miss { color: var(--miss); }
+
+.keys {
+  margin-top: 1.75rem;
+  color: var(--bone-dim);
+  font-size: var(--step--1);
+}
+.keys .sep { display: inline-block; width: 1.25rem; }
+
+/* Lamp plate: progress through the Koch order ---------------------------- */
+
+.plate {
+  background: var(--plate);
+  border: 1px solid var(--plate-edge);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem 1rem;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+.plate-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.9rem;
+}
+.plate-head h2 { font-size: var(--step-1); font-weight: 600; }
+.plate-head p { color: var(--bone-dim); }
+
+.lamps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.6rem, 1fr));
+  gap: 0.6rem;
+}
+
+.lamp {
+  --m: 0;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  font-size: var(--step-1);
+  font-weight: 600;
+  line-height: 1;
+  background: var(--lamp-off);
+  color: var(--bone-dim);
+  box-shadow: inset 0 2px 3px rgb(0 0 0 / 0.45);
+}
+
+.lamp[data-state="active"] {
+  background: color-mix(in oklab, var(--amber) calc(15% + var(--m) * 85%), var(--lamp-off));
+  color: color-mix(in oklab, var(--enamel) calc(var(--m) * 100%), var(--bone));
+  box-shadow:
+    inset 0 2px 3px rgb(0 0 0 / 0.25),
+    0 0 calc(var(--m) * 14px) color-mix(in oklab, var(--amber) calc(var(--m) * 70%), transparent);
+}
+
+.lamp[data-state="locked"] {
+  color: color-mix(in oklab, var(--bone-dim) 45%, var(--lamp-off));
+  cursor: default;
+}
+
+.lamp[data-newest] { outline: 1px solid var(--amber); outline-offset: 3px; }
+.lamp:focus-visible { outline: 2px solid var(--bone); outline-offset: 3px; }
+
+.legend {
+  margin-top: 0.9rem;
+  color: var(--bone-dim);
+  font-size: var(--step--1);
+}
+
+/* Session footer --------------------------------------------------------- */
+
+.session {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+  margin-top: 1rem;
+  color: var(--bone-dim);
+  font-size: var(--step--1);
+}
+
+/* Settings dialog -------------------------------------------------------- */
+
+dialog {
+  background: var(--plate);
+  color: var(--bone);
+  border: 1px solid var(--plate-edge);
+  border-radius: 10px;
+  padding: 1.5rem;
+  width: min(92vw, 24rem);
+}
+dialog::backdrop { background: rgb(20 23 16 / 0.7); }
+
+dialog h2 { font-size: var(--step-2); font-weight: 600; margin-bottom: 1rem; }
+
+dialog label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--plate-edge);
+}
+
+.field { display: flex; align-items: center; gap: 0.4rem; color: var(--bone-dim); }
+
+dialog input[type="number"] {
+  width: 4.5rem;
+  font: 500 var(--step-0) var(--font);
+  color: var(--bone);
+  background: var(--enamel);
+  border: 1px solid var(--plate-edge);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  text-align: right;
+}
+dialog input[type="range"] { width: 9rem; accent-color: var(--amber); }
+
+.actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 34rem) {
+  .bar { flex-wrap: wrap; gap: 0.5rem 1rem; }
+  .keys .sep { display: block; height: 0.4rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glyph { transition: none; }
+}

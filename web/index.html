@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sparkgap</title>
+  <meta name="description" content="Learn Morse code by ear with an adaptive Koch trainer.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="wordmark">sparkgap</h1>
+    <p class="readout" id="readout"></p>
+    <button type="button" class="ghost" id="open-settings">Settings</button>
+  </header>
+
+  <main>
+    <section class="stage" id="stage" aria-live="polite">
+      <p class="status" id="status">Press any key or click here to start</p>
+      <div class="glyph" id="glyph" aria-hidden="true"></div>
+      <p class="detail" id="detail">Characters play at full speed. Type each one as soon as you recognise it.</p>
+      <p class="keys"><kbd>Space</kbd> plays it again <span class="sep"></span> <kbd>Esc</kbd> pauses</p>
+    </section>
+
+    <section class="plate" aria-labelledby="plate-title">
+      <div class="plate-head">
+        <h2 id="plate-title">Characters</h2>
+        <p id="lesson"></p>
+      </div>
+      <div class="lamps" id="lamps"></div>
+      <p class="legend">A lamp burns brighter as a character gets faster and more accurate. Click one to hear it.</p>
+    </section>
+
+    <footer class="session">
+      <p id="session"></p>
+      <p id="storage"></p>
+    </footer>
+  </main>
+
+  <dialog id="settings" aria-labelledby="settings-title">
+    <form method="dialog" id="settings-form">
+      <h2 id="settings-title">Paused</h2>
+      <label>
+        <span>Character speed</span>
+        <span class="field"><input type="number" name="wpm" min="5" max="50" step="1"> wpm</span>
+      </label>
+      <label>
+        <span>Tone</span>
+        <span class="field"><input type="number" name="frequency" min="300" max="1200" step="10"> Hz</span>
+      </label>
+      <label>
+        <span>Volume</span>
+        <span class="field"><input type="range" name="volume" min="0.05" max="1" step="0.05"></span>
+      </label>
+      <div class="actions">
+        <button type="button" class="ghost" id="export">Export history</button>
+        <button type="submit" class="primary" autofocus>Resume</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
