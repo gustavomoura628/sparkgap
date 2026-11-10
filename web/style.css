@@ -284,7 +284,195 @@ dialog input[type="range"] { width: 9rem; accent-color: var(--amber); }
   margin-top: 1.25rem;
 }
 
+/* Navigation ------------------------------------------------------------- */
+
+.nav { display: flex; gap: 0.6rem; }
+a.ghost { color: var(--bone); text-decoration: none; display: inline-block; }
+
+/* Practice metrics --------------------------------------------------------- */
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  padding-top: 0.5rem;
+}
+
+.figures { display: flex; flex-wrap: wrap; gap: 0.75rem 2.25rem; margin: 0; }
+.figures div { display: grid; grid-template-columns: auto auto; column-gap: 0.5rem; align-items: baseline; }
+.figures dt { grid-column: 1 / -1; color: var(--bone-dim); font-size: var(--step--1); }
+.figures dd {
+  margin: 0;
+  font-size: var(--step-2);
+  font-weight: 600;
+  font-variant-numeric: normal;
+}
+.figures dd.delta { font-size: var(--step--1); font-weight: 500; }
+.delta.good { color: var(--hit); }
+.delta.bad { color: var(--miss); }
+
+.goal { min-width: 12rem; }
+.goal p { color: var(--bone-dim); font-size: var(--step--1); }
+.goal strong { color: var(--bone); font-weight: 600; }
+
+.meter {
+  height: 8px;
+  margin-top: 0.35rem;
+  border-radius: 4px;
+  background: var(--lamp-off);
+  overflow: hidden;
+}
+.meter span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--amber);
+  transition: width 300ms ease-out;
+}
+.meter.thin { height: 4px; }
+
+.progress-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 2rem;
+  margin-top: 1rem;
+  color: var(--bone-dim);
+  font-size: var(--step--1);
+}
+.lesson-progress { display: flex; align-items: center; gap: 0.6rem; min-width: 12rem; margin-left: auto; }
+.lesson-progress .meter { flex: 1; margin: 0; }
+
+/* Tooltip ------------------------------------------------------------------- */
+
+.tip {
+  position: fixed;
+  z-index: 10;
+  max-width: 18rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--plate-edge);
+  border-radius: 6px;
+  background: var(--enamel);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+  font-size: var(--step--1);
+  pointer-events: none;
+}
+.tip p { margin: 0; color: var(--bone-dim); }
+.tip strong { color: var(--bone); font-weight: 600; }
+.tip .tip-title { margin-bottom: 0.2rem; color: var(--bone); font-weight: 500; }
+.tip-key { display: inline-block; width: 12px; height: 2px; margin-right: 0.4rem; vertical-align: middle; }
+
+/* Charts --------------------------------------------------------------------- */
+
+.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font); fill: var(--bone-dim); }
+.chart .tick { font-size: 12px; font-variant-numeric: tabular-nums; }
+.chart .tick.cat { font-size: 13px; fill: var(--bone); }
+.chart .grid line { stroke: var(--plate-edge); stroke-width: 1; }
+.chart .trend { stroke: var(--bone-dim); stroke-width: 1.5; opacity: 0.7; }
+.chart .reference { stroke: var(--bone); stroke-width: 1; stroke-dasharray: 4 4; opacity: 0.6; }
+.chart .crosshair { stroke: var(--bone-dim); stroke-width: 1; }
+.chart .marker { stroke: var(--plate); stroke-width: 2; }
+.chart .bar.active { filter: brightness(1.2); }
+.chart .cell-outline { stroke: var(--bone); stroke-width: 1.5; }
+.chart:focus-visible { outline: 2px solid var(--amber); outline-offset: 4px; }
+
+.tree .tree-edges line { stroke: var(--plate-edge); stroke-width: 1.5; }
+.tree .tree-stub { fill: var(--plate-edge); }
+.tree .tree-empty { stroke: var(--plate-edge); stroke-width: 1.5; }
+.tree .tree-label { font-size: 13px; font-weight: 600; fill: var(--bone); pointer-events: none; }
+.tree .tree-label.on-light { fill: var(--enamel); }
+
+/* Profile page ------------------------------------------------------------- */
+
+main.page { gap: 1.25rem; padding-top: 0.5rem; }
+
+.card {
+  background: var(--plate);
+  border: 1px solid var(--plate-edge);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem 1rem;
+}
+.card h2 { font-size: var(--step-1); font-weight: 600; }
+.card .sub { max-width: 64ch; margin: 0.2rem 0 0.9rem; color: var(--bone-dim); font-size: var(--step--1); }
+
+.empty { color: var(--bone-dim); }
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+}
+.tile { padding: 0.7rem 0.85rem; border-radius: 8px; background: var(--enamel); }
+.tile dt { color: var(--bone-dim); font-size: var(--step--1); }
+.tile dd { margin: 0.15rem 0 0; font-size: var(--step-2); font-weight: 600; font-variant-numeric: normal; }
+.tile dd.note { font-size: var(--step--1); font-weight: 400; color: var(--bone-dim); }
+
+.streak-list { margin: 0; }
+.streak-list dt { font-weight: 600; }
+.streak-list dd { margin: 0 0 0.6rem; color: var(--bone-dim); }
+
+.multiples { display: flex; flex-direction: column; gap: 0.75rem; }
+.multiple { margin: 0; }
+.multiple figcaption { margin-bottom: 0.25rem; color: var(--bone); font-size: var(--step--1); font-weight: 500; }
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  color: var(--bone-dim);
+  font-size: var(--step--1);
+}
+.controls input[type="range"] { width: 12rem; accent-color: var(--amber); }
+
+.char-picker { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+.lamp.small { width: 2.2rem; font-size: var(--step-0); cursor: pointer; }
+.lamp.small[aria-pressed="true"] { outline: 2px solid var(--bone); outline-offset: 3px; }
+
+.char-summary { display: flex; flex-wrap: wrap; gap: 0.25rem 1.75rem; margin-bottom: 0.75rem; }
+
+.segmented { display: inline-flex; margin-bottom: 0.75rem; border: 1px solid var(--plate-edge); border-radius: 6px; overflow: hidden; }
+.segmented button { padding: 0.3rem 0.9rem; border: 0; background: none; font-size: var(--step--1); }
+.segmented button[aria-checked="true"] { background: var(--enamel); color: var(--amber); }
+
+.scale-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  color: var(--bone-dim);
+  font-size: var(--step--1);
+}
+.scale-bar { width: 9rem; height: 8px; border-radius: 4px; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; margin-left: 0.75rem; }
+
+.table-view { margin-top: 0.6rem; font-size: var(--step--1); }
+.table-view summary { color: var(--bone-dim); cursor: pointer; }
+.table-view table { margin-top: 0.5rem; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.table-view th, .table-view td { padding: 0.2rem 0.9rem 0.2rem 0; border-bottom: 1px solid var(--plate-edge); text-align: left; }
+.table-view th { color: var(--bone-dim); font-weight: 500; }
+
+.calendar { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+.month { border-collapse: separate; border-spacing: 3px; font-size: var(--step--1); }
+.month caption { padding-bottom: 0.3rem; font-weight: 600; text-align: left; }
+.month th { color: var(--bone-dim); font-weight: 500; }
+.month td { width: 1.9rem; height: 1.7rem; border-radius: 4px; color: var(--bone-dim); text-align: center; }
+.month td.on-light { color: var(--enamel); font-weight: 600; }
+.month td.on-dark { color: var(--bone); }
+.month td.today { outline: 1px solid var(--bone); }
+
+@media (max-width: 52rem) {
+  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 34rem) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bar { flex-wrap: wrap; gap: 0.5rem 1rem; }
   .keys .sep { display: block; height: 0.4rem; }
 }

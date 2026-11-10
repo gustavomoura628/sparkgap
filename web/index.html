@@ -13,10 +13,34 @@
   <header class="bar">
     <h1 class="wordmark">sparkgap</h1>
     <p class="readout" id="readout"></p>
-    <button type="button" class="ghost" id="open-settings">Settings</button>
+    <nav class="nav">
+      <a class="ghost" href="profile.html">Profile</a>
+      <button type="button" class="ghost" id="open-settings">Settings</button>
+    </nav>
   </header>
 
   <main>
+    <section class="metrics" aria-label="Last complete lesson">
+      <dl class="figures">
+        <div><dt>Reaction</dt><dd id="m-rt">&ndash;</dd><dd class="delta" id="d-rt"></dd></div>
+        <div><dt>Accuracy</dt><dd id="m-acc">&ndash;</dd><dd class="delta" id="d-acc"></dd></div>
+        <div><dt>Score</dt><dd id="m-score">&ndash;</dd><dd class="delta" id="d-score"></dd></div>
+        <div><dt>Copy speed</dt><dd id="m-copy">&ndash;</dd><dd class="delta" id="d-copy"></dd></div>
+      </dl>
+      <div class="goal">
+        <p>Today <strong id="goal-text"></strong></p>
+        <div class="meter" aria-hidden="true"><span id="goal-fill"></span></div>
+      </div>
+    </section>
+    <section class="progress-line">
+      <p id="current-char"></p>
+      <p id="streak"></p>
+      <div class="lesson-progress">
+        <p id="lesson-label"></p>
+        <div class="meter thin" aria-hidden="true"><span id="lesson-fill"></span></div>
+      </div>
+    </section>
+
     <section class="stage" id="stage" aria-live="polite">
       <p class="status" id="status">Press any key or click here to start</p>
       <div class="glyph" id="glyph" aria-hidden="true"></div>
@@ -49,6 +73,14 @@
       <label>
         <span>Tone</span>
         <span class="field"><input type="number" name="frequency" min="300" max="1200" step="10"> Hz</span>
+      </label>
+      <label>
+        <span>Target reaction time</span>
+        <span class="field"><input type="number" name="targetRtMs" min="150" max="2000" step="10"> ms</span>
+      </label>
+      <label>
+        <span>Daily goal</span>
+        <span class="field"><input type="number" name="dailyGoalMin" min="1" max="240" step="1"> min</span>
       </label>
       <label>
         <span>Volume</span>

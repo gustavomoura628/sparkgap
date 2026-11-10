@@ -17,6 +17,7 @@ export const RULES = Object.freeze({
   minAccChar: 0.8,    // ...at this accuracy before unlocking
   minTriesNewest: 15, // the newest character needs this many tries since it was added...
   minAccNewest: 0.9,  // ...and this accuracy over its last windowChar tries
+  targetRtMs: 500,    // every active character's median reaction time must reach this
   fastMs: 300,        // reaction times at or below this count as instant
   slowMs: 1500,       // reaction times at or above this count as slow
   newCharBoost: 25,   // the newest character is favoured for its first N tries
@@ -77,17 +78,22 @@ export function shouldUnlock(attempts, level, rules = RULES) {
 
   return active.every((c) => {
     const s = charStats(inSet, c, rules.windowChar);
-    return s.tries >= rules.minTriesChar && s.acc >= rules.minAccChar;
+    return s.tries >= rules.minTriesChar && s.acc >= rules.minAccChar &&
+      s.medianRt != null && s.medianRt <= rules.targetRtMs;
   });
 }
 
-/** 0..1 score combining recent accuracy and reaction speed. */
+/** How close a reaction time is to the target: 1 at or below target, falling off above it. */
+export function speedScore(rtMs, rules = RULES) {
+  if (rtMs == null) return 0;
+  return clamp(rules.targetRtMs / Math.max(rtMs, 1), 0, 1);
+}
+
+/** 0..1 score combining recent accuracy and reaction speed relative to the target. */
 export function mastery(stats, rules = RULES) {
   if (!stats.tries) return 0;
   const confidence = Math.min(1, stats.tries / rules.windowChar);
-  const speed = stats.medianRt == null
-    ? 0.2
-    : 1 - clamp((stats.medianRt - rules.fastMs) / (rules.slowMs - rules.fastMs), 0, 0.8);
+  const speed = stats.medianRt == null ? 0.2 : Math.max(0.2, speedScore(stats.medianRt, rules));
   return stats.acc * speed * confidence;
 }
 

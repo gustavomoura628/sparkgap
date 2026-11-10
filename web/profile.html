@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile – sparkgap</title>
+  <meta name="description" content="Practice statistics for sparkgap.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/profile.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1 class="wordmark">sparkgap</h1>
+    <p class="readout">Profile</p>
+    <nav class="nav">
+      <a class="ghost" href="./">Practice</a>
+    </nav>
+  </header>
+
+  <main class="page" id="page">
+    <p class="empty" id="empty" hidden>No practice recorded yet. Lessons you finish on the practice page show up here.</p>
+
+    <section class="card" aria-labelledby="h-all">
+      <h2 id="h-all">All time</h2>
+      <dl class="tiles" id="tiles-all"></dl>
+    </section>
+
+    <section class="card" aria-labelledby="h-today">
+      <h2 id="h-today">Today</h2>
+      <dl class="tiles" id="tiles-today"></dl>
+    </section>
+
+    <section class="card" aria-labelledby="h-streaks">
+      <h2 id="h-streaks">Accuracy streaks</h2>
+      <p class="sub">The longest unbroken run of lessons at or above each accuracy, with figures for that run.</p>
+      <div id="streaks"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-overview">
+      <h2 id="h-overview">Learning progress</h2>
+      <p class="sub">One row per character, one column per lesson. Brighter cells are closer to the target reaction time; red cells are lessons where every answer for that character was wrong.</p>
+      <div id="overview"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-trends">
+      <h2 id="h-trends">Lessons over time</h2>
+      <p class="sub">Median reaction time, accuracy and the number of unlocked characters for each lesson. The straight line on the reaction chart is the overall trend.</p>
+      <div id="trends"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-char">
+      <h2 id="h-char">Reaction time by character</h2>
+      <p class="sub">Median reaction time for one character in each lesson where it was answered correctly. Lower is better.</p>
+      <div id="per-char"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-avg">
+      <h2 id="h-avg">Median reaction time per character</h2>
+      <p class="sub">Across all correct answers.</p>
+      <div id="char-avg"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-hits">
+      <h2 id="h-hits">Hits and misses</h2>
+      <p class="sub">How often each character was answered correctly and wrongly, and its miss rate.</p>
+      <div id="hits"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-tree">
+      <h2 id="h-tree">Morse tree</h2>
+      <p class="sub">Every character sits where its code leads: a dit branches left, a dah branches right. Neighbours in the tree differ by one element, which is where most confusions happen.</p>
+      <div id="tree"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-confusion">
+      <h2 id="h-confusion">Confusions</h2>
+      <p class="sub">Rows are the character that played, columns the one typed. Only wrong answers are shaded.</p>
+      <div id="confusion"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-calendar">
+      <h2 id="h-calendar">Practice calendar</h2>
+      <p class="sub" id="calendar-sub"></p>
+      <div id="calendar"></div>
+    </section>
+  </main>
+</body>
+</html>

@@ -10,7 +10,9 @@ Standard library only.
 
 import argparse
 import json
+import shutil
 import threading
+import time
 import webbrowser
 from functools import partial
 from http import HTTPStatus
@@ -20,7 +22,14 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
 WEB_DIR = ROOT / "web"
-MAX_BODY = 64 * 1024
+MAX_BODY = 64 * 1024              # one answer or the settings
+MAX_HISTORY_BODY = 256 * 1024 * 1024  # a full history replacement during an upgrade
+
+
+def write_atomic(path: Path, text: str):
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -45,6 +54,10 @@ class Handler(SimpleHTTPRequestHandler):
     def settings_file(self) -> Path:
         return self.data_dir / "settings.json"
 
+    @property
+    def meta_file(self) -> Path:
+        return self.data_dir / "meta.json"
+
     def route(self) -> str:
         return urlsplit(self.path).path
 
@@ -57,7 +70,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/attempts":
             return self.send_json(self.read_attempts())
         if path == "/api/settings":
-            return self.send_json(self.read_settings())
+            return self.send_json(self.read_json(self.settings_file))
+        if path == "/api/meta":
+            return self.send_json(self.read_json(self.meta_file))
         return super().do_GET()
 
     def do_POST(self):
@@ -71,15 +86,42 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"ok": True}, HTTPStatus.CREATED)
 
     def do_PUT(self):
-        if self.route() != "/api/settings":
-            return self.send_error(HTTPStatus.NOT_FOUND)
-        settings = self.read_body()
-        if settings is None:
+        path = self.route()
+        if path == "/api/settings":
+            return self.put_json_file(self.settings_file)
+        if path == "/api/meta":
+            return self.put_json_file(self.meta_file)
+        if path == "/api/attempts":
+            return self.replace_attempts()
+        return self.send_error(HTTPStatus.NOT_FOUND)
+
+    def put_json_file(self, target: Path):
+        data = self.read_body()
+        if data is None:
             return
         with self.lock:
-            tmp = self.settings_file.with_suffix(".tmp")
-            tmp.write_text(json.dumps(settings, indent=2), encoding="utf-8")
-            tmp.replace(self.settings_file)
+            write_atomic(target, json.dumps(data, indent=2) + "\n")
+        self.send_json({"ok": True})
+
+    def replace_attempts(self):
+        """Replace the history after a format upgrade, keeping a backup of the old file."""
+        body = self.read_body(MAX_HISTORY_BODY)
+        if body is None:
+            return
+        attempts = body.get("attempts")
+        version = body.get("schemaVersion")
+        if not isinstance(attempts, list) or not all(isinstance(a, dict) for a in attempts):
+            return self.send_error(HTTPStatus.BAD_REQUEST, "attempts must be a list of objects")
+        if not isinstance(version, int):
+            return self.send_error(HTTPStatus.BAD_REQUEST, "schemaVersion must be an integer")
+        with self.lock:
+            if self.attempts_file.exists():
+                old = self.read_json(self.meta_file).get("schemaVersion", 1)
+                stamp = time.strftime("%Y%m%d-%H%M%S")
+                shutil.copy2(self.attempts_file, self.data_dir / f"attempts.v{old}.{stamp}.jsonl.bak")
+            lines = "".join(json.dumps(a, separators=(",", ":")) + "\n" for a in attempts)
+            write_atomic(self.attempts_file, lines)
+            write_atomic(self.meta_file, json.dumps({"schemaVersion": version}, indent=2) + "\n")
         self.send_json({"ok": True})
 
     # Helpers ---------------------------------------------------------------
@@ -89,11 +131,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
-    def read_body(self):
+    def read_body(self, max_bytes=MAX_BODY):
         """Parse a JSON object from the request body, or reply 400 and return None."""
         length = int(self.headers.get("Content-Length") or 0)
-        if not 0 < length <= MAX_BODY:
-            self.send_error(HTTPStatus.BAD_REQUEST, "Body must be 1 byte to 64 KiB")
+        if not 0 < length <= max_bytes:
+            self.send_error(HTTPStatus.BAD_REQUEST, f"Body must be 1 to {max_bytes} bytes")
             return None
         try:
             data = json.loads(self.rfile.read(length))
@@ -120,11 +162,13 @@ class Handler(SimpleHTTPRequestHandler):
                     continue  # skip a line truncated by a crash
         return out
 
-    def read_settings(self):
+    @staticmethod
+    def read_json(path: Path):
         try:
-            return json.loads(self.settings_file.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
+        return data if isinstance(data, dict) else {}
 
     def send_json(self, payload, status=HTTPStatus.OK):
         body = json.dumps(payload).encode("utf-8")

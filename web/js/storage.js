@@ -4,6 +4,8 @@
 
 const LS_ATTEMPTS = "sparkgap.attempts";
 const LS_SETTINGS = "sparkgap.settings";
+const LS_META = "sparkgap.meta";
+const LS_BACKUP = "sparkgap.attempts.backup";
 
 const serverStore = {
   kind: "server",
@@ -31,6 +33,27 @@ const serverStore = {
       body: JSON.stringify(settings),
     });
   },
+  async loadMeta() {
+    const r = await fetch("api/meta");
+    return r.ok ? r.json() : {};
+  },
+  async saveMeta(meta) {
+    const r = await fetch("api/meta", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(meta),
+    });
+    if (!r.ok) throw new Error(`Saving history version failed: HTTP ${r.status}`);
+  },
+  /** Replace the whole history after a format upgrade. The server backs up the old file first. */
+  async replaceAttempts(attempts, { to }) {
+    const r = await fetch("api/attempts", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ schemaVersion: to, attempts }),
+    });
+    if (!r.ok) throw new Error(`Upgrading history failed: HTTP ${r.status}`);
+  },
 };
 
 const readLS = (key, fallback) => {
@@ -56,6 +79,22 @@ const localStore = {
   },
   async saveSettings(settings) {
     localStorage.setItem(LS_SETTINGS, JSON.stringify(settings));
+  },
+  async loadMeta() {
+    return readLS(LS_META, {});
+  },
+  async saveMeta(meta) {
+    localStorage.setItem(LS_META, JSON.stringify(meta));
+  },
+  async replaceAttempts(attempts, { from, to }) {
+    // Keep the pre-upgrade history so an upgrade can be undone by hand.
+    localStorage.setItem(LS_BACKUP, JSON.stringify({
+      schemaVersion: from,
+      savedAt: new Date().toISOString(),
+      attempts: readLS(LS_ATTEMPTS, []),
+    }));
+    localStorage.setItem(LS_ATTEMPTS, JSON.stringify(attempts));
+    localStorage.setItem(LS_META, JSON.stringify({ schemaVersion: to }));
   },
 };
 

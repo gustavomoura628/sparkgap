@@ -60,3 +60,9 @@ test("mastery rewards speed as well as accuracy", () => {
   const slow = charStats(Array.from({ length: 10 }, () => attempt("K", true, 1400)), "K");
   assert.ok(mastery(fast) > mastery(slow));
 });
+
+test("unlocking also needs every character at the target reaction time", () => {
+  const slow = Array.from({ length: RULES.windowAll }, (_, i) => attempt(i % 2 ? "K" : "M", true, 800, 2));
+  assert.equal(shouldUnlock(slow, 2), false);
+  assert.equal(shouldUnlock(slow, 2, { ...RULES, targetRtMs: 900 }), true);
+});

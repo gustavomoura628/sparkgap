@@ -4,9 +4,13 @@ import { CODE, KOCH_ORDER } from "./morse.js";
 import { Keyer } from "./audio.js";
 import { openStore } from "./storage.js";
 import * as T from "./trainer.js";
+import * as S from "./stats.js";
+import { loadHistory, SCHEMA_VERSION } from "./migrations.js";
 
-const DEFAULTS = Object.freeze({ wpm: 20, frequency: 600, volume: 0.5 });
-const LIMITS = { wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1] };
+const DEFAULTS = Object.freeze({ wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15 });
+const LIMITS = {
+  wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], dailyGoalMin: [1, 240],
+};
 const HIT_PAUSE_MS = 450;
 
 const $ = (id) => document.getElementById(id);
@@ -22,6 +26,14 @@ const ui = {
   storage: $("storage"),
   dialog: $("settings"),
   form: $("settings-form"),
+  metric: { rt: $("m-rt"), acc: $("m-acc"), score: $("m-score"), copy: $("m-copy") },
+  delta: { rt: $("d-rt"), acc: $("d-acc"), score: $("d-score"), copy: $("d-copy") },
+  goalText: $("goal-text"),
+  goalFill: $("goal-fill"),
+  currentChar: $("current-char"),
+  streak: $("streak"),
+  lessonLabel: $("lesson-label"),
+  lessonFill: $("lesson-fill"),
 };
 
 const keyer = new Keyer();
@@ -39,6 +51,22 @@ let state = "idle";
 let resumeTo = "idle";
 let current = null; // { char, endsAt, replays, answered }
 let generation = 0; // bumped to cancel an in-flight sequence (e.g. on pause)
+
+// Active practice time: counted from the start of the drill, paused with the drill.
+let activeSince = null; // performance.now() when counting resumed; null while stopped
+let bankedMs = 0;       // time counted before a pause
+let lessonId = 0;
+let lessonMs = 0;
+
+const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs });
+
+/** Active time since the previous answer, capped so walking away does not count. */
+function takeActiveMs() {
+  const now = performance.now();
+  const d = activeSince == null ? 0 : Math.min(now - activeSince, S.IDLE_CAP_MS);
+  activeSince = now;
+  return Math.round(d);
+}
 
 // Rendering ---------------------------------------------------------------
 
@@ -81,7 +109,7 @@ function renderLamps() {
       continue;
     }
     const s = T.charStats(attempts, ch);
-    const m = T.mastery(s);
+    const m = T.mastery(s, rules());
     b.dataset.state = "active";
     b.style.setProperty("--m", m.toFixed(3));
     b.toggleAttribute("data-newest", ch === newest);
@@ -108,6 +136,64 @@ function renderSession() {
     (rt != null ? `, median reaction ${seconds(Math.max(0, rt))}.` : ".");
 }
 
+const ms = (v) => `${Math.round(Math.max(0, v))} ms`;
+const pct = (v) => `${Math.round(v * 1000) / 10}%`;
+
+function setDelta(el, diff, { lowerIsBetter = false, format }) {
+  if (diff == null || Math.abs(diff) < 1e-9) {
+    el.textContent = "";
+    el.className = "delta";
+    return;
+  }
+  const good = lowerIsBetter ? diff < 0 : diff > 0;
+  el.textContent = `${diff > 0 ? "\u25B2" : "\u25BC"} ${format(Math.abs(diff))}`;
+  el.className = `delta ${good ? "good" : "bad"}`;
+  el.setAttribute("aria-label", `${good ? "better" : "worse"} by ${format(Math.abs(diff))} than the lesson before`);
+}
+
+/** Metrics from the last complete lesson, daily goal, streak and lesson progress. */
+function renderProgress() {
+  const normalized = S.normalize(attempts);
+  const complete = S.lessons(normalized).filter((l) => l.complete);
+  const last = complete[complete.length - 1];
+  const prev = complete[complete.length - 2];
+
+  if (last) {
+    ui.metric.rt.textContent = last.medianRt != null ? ms(last.medianRt) : "\u2013";
+    ui.metric.acc.textContent = pct(last.acc);
+    ui.metric.score.textContent = last.score.toLocaleString();
+    ui.metric.copy.textContent = last.copyWpm != null ? `${last.copyWpm.toFixed(1)} wpm` : "\u2013";
+    const d = (k) => (prev && last[k] != null && prev[k] != null ? last[k] - prev[k] : null);
+    setDelta(ui.delta.rt, d("medianRt"), { lowerIsBetter: true, format: (v) => `${Math.round(v)} ms` });
+    setDelta(ui.delta.acc, d("acc"), { format: (v) => `${(v * 100).toFixed(1)} pts` });
+    setDelta(ui.delta.score, d("score"), { format: (v) => Math.round(v).toLocaleString() });
+    setDelta(ui.delta.copy, d("copyWpm"), { format: (v) => `${v.toFixed(1)} wpm` });
+  }
+
+  const todayMs = S.dailyActive(normalized).get(S.dayKey(Date.now())) || 0;
+  const goalMs = settings.dailyGoalMin * 60_000;
+  ui.goalText.textContent = `${Math.floor(todayMs / 60_000)} of ${settings.dailyGoalMin} min`;
+  ui.goalFill.style.width = `${Math.min(100, (todayMs / goalMs) * 100)}%`;
+
+  const streak = S.currentStreak(complete, 0.95);
+  ui.streak.textContent = `${streak} ${streak === 1 ? "lesson" : "lessons"} in a row at 95% or better`;
+
+  if (level >= KOCH_ORDER.length) {
+    ui.currentChar.textContent = "All characters are unlocked.";
+  } else {
+    const ch = KOCH_ORDER[level - 1];
+    const s = T.charStats(attempts, ch);
+    ui.currentChar.textContent = s.tries
+      ? `Newest: ${ch}, ${s.correct} of the last ${s.tries} correct, ` +
+        (s.medianRt != null ? `${ms(s.medianRt)} median` : "no correct answers yet") +
+        ` (target ${settings.targetRtMs} ms)`
+      : `Newest: ${ch}, not practised yet (target ${settings.targetRtMs} ms)`;
+  }
+
+  ui.lessonLabel.textContent = `Lesson ${complete.length + 1}`;
+  ui.lessonFill.style.width = `${Math.min(100, (lessonMs / S.LESSON_MS) * 100)}%`;
+}
+
 function renderReadout() {
   ui.readout.textContent = `${settings.wpm} wpm, ${settings.frequency} Hz`;
 }
@@ -120,6 +206,7 @@ function play(ch) {
 
 async function start() {
   await keyer.ensure();
+  activeSince = performance.now();
   introQueue = T.activeChars(level).filter((c) => T.charStats(attempts, c).total === 0);
   next();
 }
@@ -164,6 +251,8 @@ async function answer(ch) {
   current.answered = true;
   const rtMs = Math.round(performance.now() - current.endsAt);
   const correct = ch === current.char;
+  const durMs = takeActiveMs();
+  const charMs = Math.round(S.charDurationMs(current.char, settings.wpm));
   keyer.stop();
 
   const attempt = {
@@ -177,14 +266,24 @@ async function answer(ch) {
     level,
     wpm: settings.wpm,
     frequency: settings.frequency,
+    lesson: lessonId,
+    durMs,
+    charMs,
+    copyWpm: Math.round(S.copyWpm(charMs, rtMs) * 10) / 10,
   };
   attempts.push(attempt);
   sessionAttempts.push(attempt);
   store.addAttempt(attempt).catch((err) => {
     ui.storage.textContent = `${err.message}. This answer was not saved.`;
   });
+  lessonMs += durMs;
+  if (lessonMs >= S.LESSON_MS) {
+    lessonId++;
+    lessonMs = 0;
+  }
   renderLamps();
   renderSession();
+  renderProgress();
 
   if (correct) {
     setStage("Correct", current.char, "hit", rtMs < 0 ? "Before it finished" : seconds(rtMs));
@@ -208,7 +307,7 @@ async function answer(ch) {
 
 /** Unlock the next character if earned, then continue the drill. */
 function advance() {
-  if (T.shouldUnlock(attempts, level)) {
+  if (T.shouldUnlock(attempts, level, rules())) {
     level++;
     introQueue.push(KOCH_ORDER[level - 1]);
   }
@@ -230,6 +329,8 @@ function pause() {
   generation++;
   keyer.stop();
   state = "paused";
+  if (activeSince != null) bankedMs = performance.now() - activeSince;
+  activeSince = null;
   for (const [k, v] of Object.entries(settings)) ui.form.elements[k].value = v;
   ui.dialog.showModal();
 }
@@ -246,12 +347,15 @@ function readSettings() {
 async function resume() {
   settings = readSettings();
   renderReadout();
+  renderLamps();
+  renderProgress();
   store.saveSettings(settings).catch(() => {});
   const to = resumeTo;
   if (to === "idle") {
     state = "idle";
     return;
   }
+  activeSince = performance.now() - bankedMs;
   await keyer.ensure();
   if (to === "intro" && introQueue.length) return intro(introQueue[0]);
   if (to === "correcting") {
@@ -269,7 +373,8 @@ async function resume() {
 }
 
 function exportHistory() {
-  const blob = new Blob([JSON.stringify(attempts, null, 2)], { type: "application/json" });
+  const data = { schemaVersion: SCHEMA_VERSION, attempts };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `sparkgap-history-${new Date().toISOString().slice(0, 10)}.json`;
@@ -342,17 +447,35 @@ function onKeyDown(e) {
 async function boot() {
   buildLamps();
   store = await openStore();
-  const [history, saved] = await Promise.all([store.loadAttempts(), store.loadSettings()]);
-  attempts = Array.isArray(history) ? history : [];
+  const [history, saved] = await Promise.all([loadHistory(store), store.loadSettings()]);
+  attempts = history.attempts;
   settings = { ...DEFAULTS, ...saved };
   level = T.currentLevel(attempts);
+
+  // Continue an unfinished lesson from a recent sitting; otherwise start a new one.
+  const past = S.lessons(S.normalize(attempts));
+  const lastLesson = past[past.length - 1];
+  if (lastLesson) {
+    const recent = Date.now() - Date.parse(lastLesson.end) < S.NEW_SITTING_MS;
+    if (!lastLesson.complete && recent) {
+      lessonId = lastLesson.id;
+      lessonMs = lastLesson.activeMs;
+    } else lessonId = lastLesson.id + 1;
+  }
 
   renderReadout();
   renderLamps();
   renderSession();
+  renderProgress();
   ui.storage.textContent = store.kind === "server"
     ? "History is saved by the local server."
     : "History is saved in this browser.";
+  if (history.applied.length) {
+    ui.storage.textContent += ` It was upgraded to format ${SCHEMA_VERSION}; a backup of the previous version was kept.`;
+  }
+  if (history.newer) {
+    ui.storage.textContent = "This history was saved by a newer version of sparkgap. Update this copy before practising.";
+  }
 
   document.addEventListener("keydown", onKeyDown);
   $("open-settings").addEventListener("click", () => {
