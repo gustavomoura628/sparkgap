@@ -83,18 +83,21 @@ export function shouldUnlock(attempts, level, rules = RULES) {
   });
 }
 
-/** How close a reaction time is to the target: 1 at or below target, falling off above it. */
-export function speedScore(rtMs, rules = RULES) {
+/** Reaction time at or above which the speed fraction is 0. */
+export const slowBound = (rules = RULES) => Math.max(rules.slowMs, rules.targetRtMs + 500);
+
+/** Reaction speed from 0 (at slowBound or slower) to 1 (at the target or faster), linear in between. */
+export function speedFraction(rtMs, rules = RULES) {
   if (rtMs == null) return 0;
-  return clamp(rules.targetRtMs / Math.max(rtMs, 1), 0, 1);
+  const slow = slowBound(rules);
+  return clamp((slow - rtMs) / (slow - rules.targetRtMs), 0, 1);
 }
 
 /** 0..1 score combining recent accuracy and reaction speed relative to the target. */
 export function mastery(stats, rules = RULES) {
   if (!stats.tries) return 0;
   const confidence = Math.min(1, stats.tries / rules.windowChar);
-  const speed = stats.medianRt == null ? 0.2 : Math.max(0.2, speedScore(stats.medianRt, rules));
-  return stats.acc * speed * confidence;
+  return stats.acc * speedFraction(stats.medianRt, rules) * confidence;
 }
 
 /** Sampling weight per active character: weak and slow characters come up more often. */

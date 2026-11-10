@@ -58,7 +58,7 @@
         <p id="lesson"></p>
       </div>
       <div class="lamps" id="lamps"></div>
-      <p class="legend">A lamp burns brighter as a character gets faster and more accurate. Click one to hear it.</p>
+      <p class="legend" id="lamp-legend"></p>
     </section>
 
     <footer class="session">
@@ -89,6 +89,15 @@
       <label>
         <span>Volume</span>
         <span class="field"><input type="range" name="volume" min="0.05" max="1" step="0.05"></span>
+      </label>
+      <label>
+        <span>Colours</span>
+        <span class="field">
+          <select name="palette">
+            <option value="traffic">Red-yellow-green</option>
+            <option value="amber">Amber</option>
+          </select>
+        </span>
       </label>
       <div class="actions">
         <button type="button" class="ghost" id="export">Export history</button>

@@ -56,6 +56,14 @@ const serverStore = {
   },
 };
 
+/** Merge `patch` into the saved settings, so pages only overwrite the fields they change. */
+async function updateSettings(patch) {
+  const next = { ...(await this.loadSettings()), ...patch };
+  await this.saveSettings(next);
+  return next;
+}
+serverStore.updateSettings = updateSettings;
+
 const readLS = (key, fallback) => {
   try {
     return JSON.parse(localStorage.getItem(key)) ?? fallback;
@@ -86,6 +94,7 @@ const localStore = {
   async saveMeta(meta) {
     localStorage.setItem(LS_META, JSON.stringify(meta));
   },
+  updateSettings,
   async replaceAttempts(attempts, { from, to }) {
     // Keep the pre-upgrade history so an upgrade can be undone by hand.
     localStorage.setItem(LS_BACKUP, JSON.stringify({

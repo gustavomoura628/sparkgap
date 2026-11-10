@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RULES, currentLevel, mastery, charStats, pickNext, shouldUnlock, weights } from "../web/js/trainer.js";
+import {
+  RULES, currentLevel, mastery, charStats, pickNext, shouldUnlock, weights, speedFraction, slowBound,
+} from "../web/js/trainer.js";
 
 const attempt = (char, correct, rtMs = 400, level = 2) => ({ char, answer: correct ? char : "?", correct, rtMs, level });
 
@@ -59,6 +61,16 @@ test("mastery rewards speed as well as accuracy", () => {
   const fast = charStats(solid(["K"], 10, 2), "K");
   const slow = charStats(Array.from({ length: 10 }, () => attempt("K", true, 1400)), "K");
   assert.ok(mastery(fast) > mastery(slow));
+});
+
+test("speed fraction runs linearly from the slow bound to the target", () => {
+  assert.equal(speedFraction(RULES.targetRtMs), 1);
+  assert.equal(speedFraction(200), 1);
+  assert.equal(speedFraction(RULES.slowMs), 0);
+  assert.equal(speedFraction(5000), 0);
+  assert.equal(speedFraction((RULES.slowMs + RULES.targetRtMs) / 2), 0.5);
+  // A target near slowMs still leaves room for a scale.
+  assert.equal(slowBound({ ...RULES, targetRtMs: 1400 }), 1900);
 });
 
 test("unlocking also needs every character at the target reaction time", () => {

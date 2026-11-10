@@ -14,6 +14,8 @@
     <h1 class="wordmark">sparkgap</h1>
     <p class="readout">Profile</p>
     <nav class="nav">
+      <span class="nav-label" aria-hidden="true">Colours</span>
+      <div class="segmented" id="palette" role="radiogroup" aria-label="Colours"></div>
       <a class="ghost" href="./">Practice</a>
     </nav>
   </header>
@@ -45,7 +47,7 @@
 
     <section class="card" aria-labelledby="h-overview">
       <h2 id="h-overview">Learning progress</h2>
-      <p class="sub">One row per character, one column per lesson. Brighter cells are closer to the target reaction time; red cells are lessons where every answer for that character was wrong.</p>
+      <p class="sub">One row per character, one column per lesson, coloured by median reaction time from slow to the target. A cross marks lessons where every answer for that character was wrong.</p>
       <div id="overview"></div>
     </section>
 

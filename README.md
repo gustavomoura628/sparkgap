@@ -65,6 +65,8 @@ The **Profile** page has all-time and today totals, accuracy streaks (longest ru
 time, a per-character reaction chart with its learning rate, per-character averages, hits and misses,
 a Morse tree shaded by speed or miss rate, a confusion matrix of wrong answers, and a practice calendar.
 Every chart can be read with the keyboard (focus it, then use the arrow keys) and has a table view.
+Speed and progress colours run from red (slow, 1500 ms) through yellow to green (the target reaction
+time); the **Colours** switch at the top of the profile changes them to a dark-to-amber scale instead.
 
 The **Music** switch at the top of the practice page marks answers given while listening to music. It
 stays on until switched off, across reloads. The profile compares reaction time and accuracy with and

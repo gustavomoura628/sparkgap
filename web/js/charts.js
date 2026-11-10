@@ -51,13 +51,36 @@ function oklabToHex([L, A, B]) {
 }
 
 /** Returns t (0..1) -> hex, interpolating between two colours. */
-export function ramp(from, to) {
-  const a = hexToOklab(from);
-  const b = hexToOklab(to);
+export function ramp(...stops) {
+  const labs = stops.map(hexToOklab);
   return (t) => {
-    const u = Math.min(1, Math.max(0, t));
-    return oklabToHex(a.map((v, i) => v + (b[i] - v) * u));
+    const x = Math.min(1, Math.max(0, t)) * (labs.length - 1);
+    const i = Math.min(labs.length - 2, Math.floor(x));
+    const u = x - i;
+    return oklabToHex(labs[i].map((v, k) => v + (labs[i + 1][k] - v) * u));
   };
+}
+
+/** Bad-to-good colour scale for a palette ("traffic" or "amber"); t = 0 is bad, 1 is good. */
+export function goodScale(palette) {
+  if (palette === "amber") {
+    const amber = ramp(cssVar("--lamp-off"), cssVar("--amber"));
+    return (t) => amber(0.15 + 0.85 * t); // keep the lowest values visible
+  }
+  return ramp(cssVar("--scale-bad"), cssVar("--scale-mid"), cssVar("--scale-good"));
+}
+
+/** Colour a character lamp by its mastery (0 to 1) on the given scale. */
+export function lightLamp(lamp, mastery, scale) {
+  const fill = scale(mastery);
+  lamp.style.setProperty("--m", mastery.toFixed(3));
+  lamp.style.setProperty("--lamp-fill", fill);
+  lamp.style.setProperty("--lamp-text", isLight(fill) ? cssVar("--enamel") : cssVar("--bone"));
+}
+
+/** True when dark text reads better than light text on this fill. */
+export function isLight(hex) {
+  return hexToOklab(hex)[0] > 0.72;
 }
 
 // Tooltip ---------------------------------------------------------------------
@@ -352,6 +375,14 @@ export function heatGrid({
         x: m.l + c * cw + gap / 2, y: m.t + r * rowHeight + 1,
         width: Math.max(cw - gap, 0.6), height: rowHeight - 2, fill: v.color, rx: square ? 2 : 0,
       }, root);
+      // Optional symbol drawn over the cell (v.mark = { text, color }) when it fits.
+      if (v.mark && cw >= 8) {
+        svg("text", {
+          x: m.l + c * cw + cw / 2, y: m.t + r * rowHeight + rowHeight / 2,
+          "text-anchor": "middle", "dominant-baseline": "central", class: "cell-mark",
+          fill: v.mark.color, "font-size": Math.min(cw, rowHeight) * 0.8,
+        }, root).textContent = v.mark.text;
+      }
       cells.push({ r, c, v });
     }
   });

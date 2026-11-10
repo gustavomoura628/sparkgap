@@ -28,6 +28,10 @@
   --amber: #ffb547;
   --hit: #b9d48a;
   --miss: #ef6a4f;
+  /* Bad-to-good scale (the "Red-yellow-green" palette) */
+  --scale-bad: #e0453a;
+  --scale-mid: #f2c94c;
+  --scale-good: #5cc160;
 
   --font: "Barlow Semi Condensed", "Bahnschrift", "DIN Alternate", "Arial Narrow", sans-serif;
   --step--1: 0.875rem;
@@ -245,12 +249,13 @@ main {
   box-shadow: inset 0 2px 3px rgb(0 0 0 / 0.45);
 }
 
+/* --lamp-fill and --lamp-text are set from the chosen colour scale (charts.js lightLamp). */
 .lamp[data-state="active"] {
-  background: color-mix(in oklab, var(--amber) calc(15% + var(--m) * 85%), var(--lamp-off));
-  color: color-mix(in oklab, var(--enamel) calc(var(--m) * 100%), var(--bone));
+  background: var(--lamp-fill, var(--amber));
+  color: var(--lamp-text, var(--enamel));
   box-shadow:
     inset 0 2px 3px rgb(0 0 0 / 0.25),
-    0 0 calc(var(--m) * 14px) color-mix(in oklab, var(--amber) calc(var(--m) * 70%), transparent);
+    0 0 calc(4px + var(--m) * 10px) color-mix(in oklab, var(--lamp-fill, var(--amber)) calc(25% + var(--m) * 45%), transparent);
 }
 
 .lamp[data-state="locked"] {
@@ -315,6 +320,14 @@ dialog input[type="number"] {
   text-align: right;
 }
 dialog input[type="range"] { width: 9rem; accent-color: var(--amber); }
+dialog select {
+  font: 500 var(--step-0) var(--font);
+  color: var(--bone);
+  background: var(--enamel);
+  border: 1px solid var(--plate-edge);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+}
 
 .actions {
   display: flex;
@@ -490,6 +503,14 @@ main.page { gap: 1.25rem; padding-top: 0.5rem; }
 }
 .scale-bar { width: 9rem; height: 8px; border-radius: 4px; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; margin-left: 0.75rem; }
+.swatch.marked {
+  display: inline-grid; place-items: center; width: 14px; height: 14px;
+  background: var(--lamp-off); color: var(--miss); font-size: 11px; line-height: 1;
+}
+.bar .segmented { margin: 0; }
+.nav { align-items: center; }
+.nav-label { color: var(--bone-dim); font-size: var(--step--1); }
+.cell-mark { font-weight: 600; pointer-events: none; }
 
 .table-view { margin-top: 0.6rem; font-size: var(--step--1); }
 .table-view summary { color: var(--bone-dim); cursor: pointer; }

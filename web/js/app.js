@@ -6,9 +6,11 @@ import { openStore } from "./storage.js";
 import * as T from "./trainer.js";
 import * as S from "./stats.js";
 import { loadHistory, SCHEMA_VERSION } from "./migrations.js";
+import { goodScale, lightLamp } from "./charts.js";
 
 const DEFAULTS = Object.freeze({
   wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15, music: false,
+  palette: "traffic",
 });
 const LIMITS = {
   wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], dailyGoalMin: [1, 240],
@@ -39,6 +41,7 @@ const ui = {
   lessonFill: $("lesson-fill"),
   music: $("music"),
   strip: $("strip"),
+  lampLegend: $("lamp-legend"),
 };
 
 const keyer = new Keyer();
@@ -105,6 +108,10 @@ function buildLamps() {
 function renderLamps() {
   const active = new Set(T.activeChars(level));
   const newest = KOCH_ORDER[level - 1];
+  const scale = goodScale(settings.palette);
+  ui.lampLegend.textContent = (settings.palette === "amber"
+    ? "A lamp burns brighter as a character gets faster and more accurate."
+    : "A lamp goes from red to green as a character gets faster and more accurate.") + " Click one to hear it.";
   for (const b of ui.lamps.children) {
     const ch = b.dataset.char;
     if (!active.has(ch)) {
@@ -118,7 +125,7 @@ function renderLamps() {
     const s = T.charStats(attempts, ch);
     const m = T.mastery(s, rules());
     b.dataset.state = "active";
-    b.style.setProperty("--m", m.toFixed(3));
+    lightLamp(b, m, scale);
     b.toggleAttribute("data-newest", ch === newest);
     const desc = s.tries
       ? `${Math.round(s.acc * 100)}% of the last ${s.tries}` +
@@ -239,7 +246,7 @@ function renderStrip() {
 function toggleMusic() {
   settings = { ...settings, music: !settings.music };
   renderReadout();
-  store.saveSettings(settings).catch(() => {});
+  store.updateSettings({ music: settings.music }).catch(() => {});
   ui.music.blur(); // keep answer keys away from the button
 }
 
@@ -433,6 +440,7 @@ function pause() {
 
 function fillForm() {
   for (const k of Object.keys(LIMITS)) ui.form.elements[k].value = settings[k];
+  ui.form.elements.palette.value = settings.palette;
 }
 
 function readSettings() {
@@ -441,6 +449,7 @@ function readSettings() {
     const v = Number(ui.form.elements[k].value);
     if (Number.isFinite(v)) next[k] = Math.min(hi, Math.max(lo, v));
   }
+  next.palette = ui.form.elements.palette.value === "amber" ? "amber" : "traffic";
   return next;
 }
 
@@ -449,7 +458,8 @@ async function resume() {
   renderReadout();
   renderLamps();
   renderProgress();
-  store.saveSettings(settings).catch(() => {});
+  const owned = [...Object.keys(LIMITS), "palette"];
+  store.updateSettings(Object.fromEntries(owned.map((k) => [k, settings[k]]))).catch(() => {});
   const to = resumeTo;
   if (to === "idle") {
     state = "idle";

@@ -8,11 +8,47 @@ import * as C from "./charts.js";
 import { loadHistory } from "./migrations.js";
 
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { targetRtMs: T.RULES.targetRtMs, dailyGoalMin: 15 };
+const DEFAULTS = { targetRtMs: T.RULES.targetRtMs, dailyGoalMin: 15, palette: "traffic" };
+const PALETTES = [["traffic", "Red-yellow-green"], ["amber", "Amber"]];
+const ALL_WRONG = "\u2715";
 
 let settings;
 let rules;
 let colors;
+let store;
+let data; // computed history, kept for redrawing when the palette changes
+
+// Colour scales -----------------------------------------------------------------
+
+/** Bad-to-good scale in the chosen palette: t = 0 is bad, 1 is good. */
+const goodScale = () => C.goodScale(settings.palette);
+const relight = []; // lamp restylers, rerun when the palette changes
+
+const speedT = (rtMs) => T.speedFraction(rtMs, rules);
+
+function legendBar(scale, left, right) {
+  const wrap = el("div", { class: "scale-legend" });
+  const bar = el("span", { class: "scale-bar" });
+  const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => `${scale(t)} ${t * 100}%`);
+  bar.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
+  wrap.append(el("span", {}, left), bar, el("span", {}, right));
+  return wrap;
+}
+
+function paletteSwitch() {
+  const box = $("palette");
+  box.replaceChildren(...PALETTES.map(([value, text]) => {
+    const b = el("button", { type: "button", role: "radio", "aria-checked": String(settings.palette === value) }, text);
+    b.addEventListener("click", () => {
+      if (settings.palette === value) return;
+      settings.palette = value;
+      store.updateSettings({ palette: value }).catch(() => {});
+      paletteSwitch();
+      drawScaled();
+    });
+    return b;
+  }));
+}
 
 // Formatting -----------------------------------------------------------------
 
@@ -114,7 +150,7 @@ function overview(container, complete) {
   if (!complete.length) return emptyNote(container, NEED_LESSON);
   const maxLevel = Math.max(...complete.map((l) => l.level));
   const chars = KOCH_ORDER.slice(0, maxLevel);
-  const amber = C.ramp(colors.lampOff, colors.amber);
+  const scale = goodScale();
   const grid = C.heatGrid({
     rows: chars,
     cols: complete.length,
@@ -127,8 +163,10 @@ function overview(container, complete) {
         { value: `${v.correct} of ${v.n}`, label: "correct" },
         { value: ms(v.medianRt), label: "median reaction" },
       ];
-      if (v.medianRt == null) return { color: colors.miss, title, rows };
-      return { color: amber(0.15 + 0.85 * T.speedScore(v.medianRt, rules)), title, rows };
+      if (v.medianRt == null) {
+        return { color: colors.lampOff, mark: { text: ALL_WRONG, color: colors.miss }, title, rows };
+      }
+      return { color: scale(speedT(v.medianRt)), title, rows };
     },
   });
   const table = C.tableView(
@@ -139,19 +177,10 @@ function overview(container, complete) {
       return [ch, seen.length ? seen[0][0] + 1 : "", seen.length, last ? ms(last[1].medianRt) : ""];
     }),
   );
-  container.replaceChildren(grid, scaleLegend(amber), table);
-}
-
-function scaleLegend(rampFn) {
-  const wrap = el("div", { class: "scale-legend" });
-  const bar = el("span", { class: "scale-bar" });
-  const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => `${rampFn(0.15 + 0.85 * t)} ${t * 100}%`);
-  bar.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
-  wrap.append(el("span", {}, "Slow"), bar, el("span", {}, `At target (${settings.targetRtMs} ms)`));
-  const miss = el("span", { class: "swatch" });
-  miss.style.background = colors.miss;
-  wrap.append(miss, el("span", {}, "All wrong"));
-  return wrap;
+  const legend = legendBar(scale, `Slow (${T.slowBound(rules)} ms)`,
+    `At target (${settings.targetRtMs} ms)`);
+  legend.append(el("span", { class: "swatch marked", "aria-hidden": "true" }, ALL_WRONG), el("span", {}, "All wrong"));
+  container.replaceChildren(grid, legend, table);
 }
 
 // Trends ----------------------------------------------------------------------
@@ -219,7 +248,9 @@ function perChar(container, complete, normalized) {
     const b = el("button", { type: "button", class: "lamp small", "aria-pressed": "false" }, ch);
     const m = T.mastery(T.charStats(normalized, ch), rules);
     b.dataset.state = "active";
-    b.style.setProperty("--m", m.toFixed(3));
+    const light = () => C.lightLamp(b, m, goodScale());
+    light();
+    relight.push(light);
     b.addEventListener("click", () => {
       selected = ch;
       draw();
@@ -352,9 +383,14 @@ function morseTree(container, normalized, totals) {
   };
   place(root);
 
-  const amber = C.ramp(colors.lampOff, colors.amber);
+  const scale = goodScale();
   const red = C.ramp(colors.lampOff, colors.miss);
+  const MISS_FULL = 0.2; // miss rate shown fully bad on the red-yellow-green scale
+  const missFill = (ratio) => (settings.palette === "amber"
+    ? red(0.1 + 0.9 * ratio)
+    : scale(1 - Math.min(1, ratio / MISS_FULL)));
   const box = el("div");
+  const legendBox = el("div");
 
   const draw = () => {
     const svgRoot = C.svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart tree", role: "img",
@@ -373,14 +409,14 @@ function morseTree(container, normalized, totals) {
       const t = totals.get(n.char);
       const recent = T.charStats(normalized, n.char);
       let fill = null;
-      if (t && mode === "speed" && recent.medianRt != null) fill = amber(0.15 + 0.85 * T.speedScore(recent.medianRt, rules));
-      if (t && mode === "miss") fill = red(0.1 + 0.9 * t.missRatio);
+      if (t && mode === "speed" && recent.medianRt != null) fill = scale(speedT(recent.medianRt));
+      if (t && mode === "miss") fill = missFill(t.missRatio);
       const g = C.svg("g", { class: "tree-node" }, nodes);
       C.svg("circle", { cx: n.x, cy: n.y, r: 11, fill: fill || "none", class: fill ? "" : "tree-empty" }, g);
       const text = C.svg("text", { x: n.x, y: n.y, "text-anchor": "middle", "dominant-baseline": "central",
         class: "tree-label" }, g);
       text.textContent = n.char;
-      if (fill && (mode === "speed" ? T.speedScore(recent.medianRt, rules) > 0.6 : false)) text.classList.add("on-light");
+      if (fill && C.isLight(fill)) text.classList.add("on-light");
       C.svg("circle", { cx: n.x, cy: n.y, r: 16, fill: "transparent" }, g);
       const rows = t
         ? [
@@ -395,6 +431,11 @@ function morseTree(container, normalized, totals) {
     };
     visit(root);
     box.replaceChildren(svgRoot);
+    legendBox.replaceChildren(mode === "speed"
+      ? legendBar(scale, "Slow", `At target (${settings.targetRtMs} ms)`)
+      : settings.palette === "amber"
+        ? legendBar((t) => red(0.1 + 0.9 * t), "No misses", "All missed")
+        : legendBar((t) => missFill(MISS_FULL * (1 - t)), `${MISS_FULL * 100}% or more missed`, "No misses"));
   };
 
   const toggle = el("div", { class: "segmented", role: "radiogroup", "aria-label": "Shade by" });
@@ -409,7 +450,7 @@ function morseTree(container, normalized, totals) {
   }
   draw();
   const chars = KOCH_ORDER.filter((c) => totals.has(c));
-  container.replaceChildren(toggle, box, C.tableView(
+  container.replaceChildren(toggle, box, legendBox, C.tableView(
     ["Character", "Code", "Recent median reaction", "Miss rate"],
     chars.map((c) => [c, CODE[c], ms(T.charStats(normalized, c).medianRt), `${(totals.get(c).missRatio * 100).toFixed(1)}%`]),
   ));
@@ -451,9 +492,9 @@ function calendar(container, normalized) {
   const goal = settings.dailyGoalMin * 60_000;
   const months = new Set([...days.keys()].map((k) => k.slice(0, 7)));
   months.add(S.dayKey(Date.now()).slice(0, 7));
-  const amber = C.ramp(colors.lampOff, colors.amber);
+  const scale = goodScale();
   const step = (f) => (f >= 1 ? 4 : f >= 0.75 ? 3 : f >= 0.5 ? 2 : f >= 0.25 ? 1 : f > 0 ? 0.4 : 0);
-  const fillFor = (s) => (s === 0 ? null : amber(s / 4));
+  const fillFor = (s) => (s === 0 ? null : scale(s / 4));
 
   const wrap = el("div", { class: "calendar" });
   for (const key of [...months].sort()) {
@@ -477,7 +518,7 @@ function calendar(container, normalized) {
       const fill = fillFor(step(active / goal));
       if (fill) {
         cell.style.background = fill;
-        cell.classList.add(active >= goal * 0.75 ? "on-light" : "on-dark");
+        cell.classList.add(C.isLight(fill) ? "on-light" : "on-dark");
       }
       if (k === S.dayKey(Date.now())) cell.classList.add("today");
       cell.title = `${Math.round(active / 60_000)} of ${settings.dailyGoalMin} min`;
@@ -504,10 +545,11 @@ async function boot() {
     bone: C.cssVar("--bone-dim"),
     lampOff: C.cssVar("--lamp-off"),
   };
-  const store = await openStore();
+  store = await openStore();
   const [history, saved] = await Promise.all([loadHistory(store), store.loadSettings()]);
   settings = { ...DEFAULTS, ...saved };
   rules = { ...T.RULES, targetRtMs: settings.targetRtMs };
+  paletteSwitch();
 
   const normalized = S.normalize(history.attempts);
   if (!normalized.length) {
@@ -527,13 +569,22 @@ async function boot() {
   tiles($("tiles-today"), S.totals(completeToday, days.get(today) || 0));
   musicEffect($("music"), normalized);
   streakList($("streaks"), complete);
-  overview($("overview"), complete);
   trends($("trends"), complete);
   perChar($("per-char"), complete, normalized);
   charAverages($("char-avg"), totals);
   hitsAndMisses($("hits"), totals);
-  morseTree($("tree"), normalized, totals);
   confusionMatrix($("confusion"), normalized);
+  data = { complete, normalized, totals };
+  drawScaled();
+}
+
+/** Sections coloured with the bad-to-good scale; redrawn when the palette changes. */
+function drawScaled() {
+  if (!data) return;
+  const { complete, normalized, totals } = data;
+  for (const light of relight) light();
+  overview($("overview"), complete);
+  morseTree($("tree"), normalized, totals);
   calendar($("calendar"), normalized);
 }
 
