@@ -43,6 +43,9 @@ function paletteSwitch() {
       if (settings.palette === value) return;
       settings.palette = value;
       store.updateSettings({ palette: value }).catch(() => {});
+      store.addEvent({
+        t: new Date().toISOString(), type: "settings", page: "profile", changes: { palette: value },
+      }).catch(() => {});
       paletteSwitch();
       drawScaled();
     });

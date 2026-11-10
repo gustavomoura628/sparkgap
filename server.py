@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Local server for sparkgap.
 
-Serves the web app and stores practice history as JSON Lines, so the data
+Serves the web app and stores practice history (one answer per line) and an
+event log (sessions, pauses, unlocks and so on) as JSON Lines, so the data
 stays in plain files that are easy to inspect, back up, or analyse.
 Standard library only.
 
@@ -51,6 +52,10 @@ class Handler(SimpleHTTPRequestHandler):
         return self.data_dir / "attempts.jsonl"
 
     @property
+    def events_file(self) -> Path:
+        return self.data_dir / "events.jsonl"
+
+    @property
     def settings_file(self) -> Path:
         return self.data_dir / "settings.json"
 
@@ -68,7 +73,9 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/health":
             return self.send_json({"ok": True})
         if path == "/api/attempts":
-            return self.send_json(self.read_attempts())
+            return self.send_json(self.read_jsonl(self.attempts_file))
+        if path == "/api/events":
+            return self.send_json(self.read_jsonl(self.events_file))
         if path == "/api/settings":
             return self.send_json(self.read_json(self.settings_file))
         if path == "/api/meta":
@@ -76,12 +83,14 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        if self.route() != "/api/attempts":
+        targets = {"/api/attempts": self.attempts_file, "/api/events": self.events_file}
+        target = targets.get(self.route())
+        if target is None:
             return self.send_error(HTTPStatus.NOT_FOUND)
         record = self.read_body()
         if record is None:
             return
-        with self.lock, self.attempts_file.open("a", encoding="utf-8") as f:
+        with self.lock, target.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, separators=(",", ":")) + "\n")
         self.send_json({"ok": True}, HTTPStatus.CREATED)
 
@@ -147,11 +156,11 @@ class Handler(SimpleHTTPRequestHandler):
             return None
         return data
 
-    def read_attempts(self):
-        if not self.attempts_file.exists():
+    def read_jsonl(self, path: Path):
+        if not path.exists():
             return []
         out = []
-        with self.lock, self.attempts_file.open(encoding="utf-8") as f:
+        with self.lock, path.open(encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

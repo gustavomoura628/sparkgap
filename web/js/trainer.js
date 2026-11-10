@@ -117,20 +117,33 @@ export function weights(attempts, level, rules = RULES) {
 }
 
 /**
- * Pick the next character. Avoids the same character three times in a row.
+ * Pick the next character and report the probability it had of being picked.
+ * Avoids the same character three times in a row, and `exclude` (for example
+ * a character just skipped) when another one is available.
  * `rng` returns a float in [0, 1).
  */
-export function pickNext(attempts, level, rng = Math.random, rules = RULES) {
+export function pickNextWithProb(attempts, level, { rng = Math.random, rules = RULES, exclude = null } = {}) {
   let pool = weights(attempts, level, rules);
   const last2 = attempts.slice(-2).map((a) => a.char);
-  if (last2.length === 2 && last2[0] === last2[1] && pool.length > 1) {
-    pool = pool.filter((p) => p.char !== last2[0]);
-  }
+  const drop = (ch) => {
+    if (ch != null && pool.length > 1 && pool.some((p) => p.char === ch)) pool = pool.filter((p) => p.char !== ch);
+  };
+  if (last2.length === 2 && last2[0] === last2[1]) drop(last2[0]);
+  drop(exclude);
   const total = pool.reduce((s, p) => s + p.weight, 0);
   let r = rng() * total;
+  let pick = pool[pool.length - 1];
   for (const p of pool) {
     r -= p.weight;
-    if (r < 0) return p.char;
+    if (r < 0) {
+      pick = p;
+      break;
+    }
   }
-  return pool[pool.length - 1].char;
+  return { char: pick.char, prob: pick.weight / total };
+}
+
+/** Pick the next character (see pickNextWithProb). */
+export function pickNext(attempts, level, rng = Math.random, rules = RULES) {
+  return pickNextWithProb(attempts, level, { rng, rules }).char;
 }

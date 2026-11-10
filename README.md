@@ -83,17 +83,33 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.5.0","session":"m3x9k2ab4f","rtFirstMs":412,"pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
-`rtMs` is negative when the answer came before the character finished playing. Newer records also carry
-`lesson`, `durMs` (active time credited to the answer), `charMs` (how long the character played) and
-`copyWpm`. Older records without them get them derived from their timestamps. `music` records the
-state of the **Music** switch on the practice page; answers recorded before it existed do not have it.
+| Field | Meaning |
+|---|---|
+| `rtMs` | Reaction time from the end of the last play of the character; negative if the answer came before it finished |
+| `rtFirstMs`, `replayAtMs` | Reaction time from the end of the first play, and when each replay was requested (same reference) |
+| `lesson`, `durMs` | Lesson number and active practice time credited to the answer |
+| `charMs`, `copyWpm` | How long the character played, and the resulting copy speed |
+| `pickProb` | Probability the trainer had of choosing this character, for correcting the adaptive selection in analysis |
+| `blurred` | The page lost focus or was hidden while the character was waiting for an answer |
+| `latencyMs` | Audio output latency added to the end-of-tone time |
+| `app`, `session` | App version and page-load identifier |
+| `music`, `targetRtMs`, `volume`, `tzOffsetMin` | Settings and local time zone offset (minutes east of UTC) at the time |
+
+Older records may lack the newer fields. Reaction times use the key press's own timestamp.
+
+Events go to `data/events.jsonl` (the browser keeps the most recent 5000): `open` and `close` of the page
+(with app version, time zone and browser), `start` of the drill, `pause` and `resume`, `settings` changes,
+`intro` of a new character (plays and time spent), `unlock`, `correction` after a miss (time to the correct
+key, wrong keys pressed, replays), `idle-stop` (the dropped character), and `hidden`, `visible`, `blur` and
+`focus` of the page.
 Use `--data-dir` to store data somewhere else. Settings are kept in `settings.json` in the same directory.
 
 Without the server, for example on static hosting, the app keeps history in the browser's `localStorage`.
-**Export history** in the settings dialog downloads it as JSON, together with its format version.
+**Export history** in the settings dialog downloads the history and the event log as JSON, together with
+the format and app versions.
 
 ### Updating
 
@@ -131,6 +147,7 @@ has already been released: existing histories have already run it.
 | `web/js/trainer.js` | Unlock rules, character weighting, mastery score |
 | `web/js/audio.js` | Web Audio playback with click-free tone shaping |
 | `web/js/migrations.js` | History format versions and upgrades |
+| `web/js/version.js` | App version recorded with answers and events; bump it with each release that changes behaviour |
 | `web/js/stats.js` | Lesson grouping, streaks, practice time, per-character statistics |
 | `web/js/charts.js` | SVG line, bar and heat-grid charts with tooltips and table views |
 | `web/js/app.js` | Drill UI and keyboard handling |

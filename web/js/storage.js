@@ -6,6 +6,8 @@ const LS_ATTEMPTS = "sparkgap.attempts";
 const LS_SETTINGS = "sparkgap.settings";
 const LS_META = "sparkgap.meta";
 const LS_BACKUP = "sparkgap.attempts.backup";
+const LS_EVENTS = "sparkgap.events";
+const LOCAL_EVENTS_MAX = 5000; // browser storage is small; keep the most recent events
 
 const serverStore = {
   kind: "server",
@@ -21,6 +23,22 @@ const serverStore = {
       body: JSON.stringify(attempt),
     });
     if (!r.ok) throw new Error(`Saving attempt failed: HTTP ${r.status}`);
+  },
+  async addEvent(event) {
+    await fetch("api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    });
+  },
+  /** Send an event while the page is closing, when a normal request may be cancelled. */
+  addEventOnExit(event) {
+    const blob = new Blob([JSON.stringify(event)], { type: "application/json" });
+    if (!navigator.sendBeacon?.("api/events", blob)) this.addEvent(event).catch(() => {});
+  },
+  async loadEvents() {
+    const r = await fetch("api/events");
+    return r.ok ? r.json() : [];
   },
   async loadSettings() {
     const r = await fetch("api/settings");
@@ -81,6 +99,17 @@ const localStore = {
     const all = readLS(LS_ATTEMPTS, []);
     all.push(attempt);
     localStorage.setItem(LS_ATTEMPTS, JSON.stringify(all));
+  },
+  async addEvent(event) {
+    const all = readLS(LS_EVENTS, []);
+    all.push(event);
+    localStorage.setItem(LS_EVENTS, JSON.stringify(all.slice(-LOCAL_EVENTS_MAX)));
+  },
+  addEventOnExit(event) {
+    this.addEvent(event).catch(() => {});
+  },
+  async loadEvents() {
+    return readLS(LS_EVENTS, []);
   },
   async loadSettings() {
     return readLS(LS_SETTINGS, {});

@@ -55,7 +55,7 @@ export class Keyer {
         resolve();
       };
     });
-    return { endsAt, done };
+    return { endsAt, done, latencyMs: latency };
   }
 
   /** Silence everything that is playing or scheduled. */

@@ -7,6 +7,7 @@ import * as T from "./trainer.js";
 import * as S from "./stats.js";
 import { loadHistory, SCHEMA_VERSION } from "./migrations.js";
 import { goodScale, lightLamp } from "./charts.js";
+import { APP_VERSION } from "./version.js";
 
 const DEFAULTS = Object.freeze({
   wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15, music: false,
@@ -45,6 +46,7 @@ const ui = {
 };
 
 const keyer = new Keyer();
+const SESSION = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let store;
@@ -57,7 +59,7 @@ let sessionAttempts = [];
 // state: idle | intro | listening | feedback | correcting | paused
 let state = "idle";
 let resumeTo = "idle";
-let current = null; // { char, endsAt, replays, answered }
+let current = null; // the prompt being answered: { char, endsAt, firstEndsAt, replays, answered, ... }
 let generation = 0; // bumped to cancel an in-flight sequence (e.g. on pause)
 
 // Active practice time: counted from the start of the drill, paused with the drill.
@@ -66,9 +68,30 @@ let bankedMs = 0;       // time counted before a pause
 let lessonId = 0;
 let lessonCount = 0;
 let idleTimer = null;
+let idleFrom = 0;   // performance.now() the idle timer counts from
 let skipped = null; // character dropped by the idle stop; the next prompt avoids it
+let introInfo = null; // { char, since, plays } for the character being introduced
 
 const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs });
+
+/** Append to the event log (sessions, pauses, unlocks...). `onExit` uses a request that survives page close. */
+function logEvent(type, data = {}, onExit = false) {
+  if (!store) return;
+  const event = { t: new Date().toISOString(), session: SESSION, type, ...data };
+  if (onExit) store.addEventOnExit(event);
+  else store.addEvent(event).catch(() => {});
+}
+
+/** The key press time on the performance.now() clock, falling back to now. */
+function eventTime(e) {
+  const now = performance.now();
+  return e && e.timeStamp > 0 && Math.abs(now - e.timeStamp) < 1000 ? e.timeStamp : now;
+}
+
+/** Mark the prompt in progress as possibly distracted (tab hidden or window unfocused). */
+function markDistracted() {
+  if (current && !current.answered) current.blurred = true;
+}
 
 /** Active time since the previous answer, capped so walking away does not count. */
 function takeActiveMs() {
@@ -245,6 +268,7 @@ function renderStrip() {
 /** Record whether music is playing; saved with every answer from now on. */
 function toggleMusic() {
   settings = { ...settings, music: !settings.music };
+  logEvent("settings", { changes: { music: settings.music } });
   renderReadout();
   store.updateSettings({ music: settings.music }).catch(() => {});
   ui.music.blur(); // keep answer keys away from the button
@@ -255,6 +279,7 @@ function toggleMusic() {
 /** Stop the drill if no key arrives within IDLE_MS of a tone ending at `endsAt`. */
 function armIdle(endsAt) {
   clearTimeout(idleTimer);
+  idleFrom = endsAt;
   idleTimer = setTimeout(goIdle, Math.max(0, endsAt - performance.now()) + IDLE_MS);
 }
 
@@ -271,9 +296,17 @@ function disarmIdle() {
  */
 function goIdle() {
   if (state !== "listening" && state !== "correcting" && state !== "intro") return;
+  logEvent("idle-stop", {
+    state,
+    char: state === "intro" ? introInfo?.char : current?.char,
+    ref: state === "correcting" ? current?.attempt?.t : undefined,
+    replays: state === "listening" ? current.replays : undefined,
+    sinceToneMs: Math.round(performance.now() - idleFrom),
+  });
   generation++;
   keyer.stop();
   skipped = state === "listening" ? current.char : null;
+  introInfo = null;
   current = null;
   state = "idle";
   activeSince = null;
@@ -289,6 +322,7 @@ function play(ch) {
 
 async function start() {
   await keyer.ensure();
+  logEvent("start", { level });
   activeSince = performance.now();
   introQueue = T.activeChars(level).filter((c) => T.charStats(attempts, c).total === 0);
   next();
@@ -306,7 +340,9 @@ async function intro(ch) {
   renderLamps();
   renderStrip();
   setStage("New character", ch, "intro", "Listen to it a few times. Space plays it again; any other key continues.");
+  if (introInfo?.char !== ch) introInfo = { char: ch, since: performance.now(), plays: 0 };
   for (let i = 0; i < 3; i++) {
+    introInfo.plays++;
     const tone = play(ch);
     armIdle(tone.endsAt);
     await tone.done;
@@ -318,30 +354,36 @@ async function intro(ch) {
 
 function prompt() {
   generation++;
-  let ch = T.pickNext(attempts, level);
-  for (let i = 0; ch === skipped && level > 1 && i < 50; i++) ch = T.pickNext(attempts, level);
+  const pick = T.pickNextWithProb(attempts, level, { rules: rules(), exclude: skipped });
   skipped = null;
-  current = { char: ch, endsAt: 0, replays: 0, answered: false };
+  const ch = pick.char;
+  current = {
+    char: ch, prob: pick.prob, endsAt: 0, firstEndsAt: 0, replays: 0, replayAt: [], answered: false,
+    blurred: document.hidden || !document.hasFocus(),
+  };
   setStage("Type what you hear");
-  current.endsAt = play(ch).endsAt;
+  const tone = play(ch);
+  current.endsAt = current.firstEndsAt = tone.endsAt;
+  current.latencyMs = tone.latencyMs;
   state = "listening";
   armIdle(current.endsAt);
   renderStrip();
 }
 
-function replay() {
+function replay(at = performance.now()) {
   keyer.stop();
   current.replays++;
+  current.replayAt.push(Math.round(at - current.firstEndsAt));
   current.endsAt = play(current.char).endsAt;
   armIdle(current.endsAt);
 }
 
-async function answer(ch) {
+async function answer(ch, at = performance.now()) {
   const gen = generation;
   disarmIdle();
   state = "feedback";
   current.answered = true;
-  const rtMs = Math.round(performance.now() - current.endsAt);
+  const rtMs = Math.round(at - current.endsAt);
   const correct = ch === current.char;
   const durMs = takeActiveMs();
   const charMs = Math.round(S.charDurationMs(current.char, settings.wpm));
@@ -370,6 +412,17 @@ async function answer(ch) {
     charMs,
     copyWpm: Math.round(S.copyWpm(charMs, rtMs) * 10) / 10,
     music: settings.music,
+    // Context for later analysis
+    app: APP_VERSION,
+    session: SESSION,
+    rtFirstMs: Math.round(at - current.firstEndsAt),
+    ...(current.replayAt.length ? { replayAtMs: current.replayAt } : {}),
+    pickProb: Math.round(current.prob * 10_000) / 10_000,
+    targetRtMs: settings.targetRtMs,
+    volume: settings.volume,
+    blurred: current.blurred,
+    tzOffsetMin: -new Date().getTimezoneOffset(),
+    latencyMs: Math.round(current.latencyMs * 10) / 10,
   };
   attempts.push(attempt);
   sessionAttempts.push(attempt);
@@ -397,6 +450,8 @@ async function answer(ch) {
     setStage("Missed", current.char, "miss",
       [`It was ${current.char}, `, you, `. Type ${current.char} to continue.`]);
     // Wait for the correct key before moving on; only the first answer is recorded.
+    // How the correction goes is logged as an event.
+    current.correction = { since: at, wrong: [], replays: 0 };
     state = "correcting";
     await sleep(150);
     if (gen !== generation || state !== "correcting") return;
@@ -412,6 +467,7 @@ function advance() {
   if (T.shouldUnlock(attempts, level, rules())) {
     level++;
     introQueue.push(KOCH_ORDER[level - 1]);
+    logEvent("unlock", { char: KOCH_ORDER[level - 1], level });
   }
   next();
 }
@@ -427,6 +483,7 @@ async function previewChar(ch) {
 
 function pause() {
   if (state === "paused") return;
+  logEvent("pause", { state });
   disarmIdle();
   resumeTo = state === "feedback" ? "listening" : state;
   generation++;
@@ -454,7 +511,11 @@ function readSettings() {
 }
 
 async function resume() {
+  const before = settings;
   settings = readSettings();
+  const changes = Object.fromEntries(Object.entries(settings).filter(([k, v]) => before[k] !== v));
+  if (Object.keys(changes).length) logEvent("settings", { changes });
+  if (resumeTo !== "idle") logEvent("resume", { to: resumeTo });
   renderReadout();
   renderLamps();
   renderProgress();
@@ -483,8 +544,9 @@ async function resume() {
   next();
 }
 
-function exportHistory() {
-  const data = { schemaVersion: SCHEMA_VERSION, attempts };
+async function exportHistory() {
+  const events = await store.loadEvents().catch(() => []);
+  const data = { schemaVersion: SCHEMA_VERSION, app: APP_VERSION, attempts, events };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -521,34 +583,47 @@ function onKeyDown(e) {
       keyer.stop();
       if (isSpace) {
         generation++;
+        introInfo.plays++;
         armIdle(play(introQueue[0]).endsAt);
       } else {
+        logEvent("intro", {
+          char: introInfo.char, plays: introInfo.plays, ms: Math.round(eventTime(e) - introInfo.since),
+        });
+        introInfo = null;
         introQueue.shift();
         next();
       }
       break;
     case "correcting": {
+      const fix = current.correction;
       if (isSpace) {
         keyer.stop();
+        fix.replays++;
         armIdle(play(current.char).endsAt);
         return;
       }
-      if (normalizeKey(e) === current.char) {
+      const key = normalizeKey(e);
+      if (key === current.char) {
         e.preventDefault();
         keyer.stop();
         generation++;
+        logEvent("correction", {
+          ref: current.attempt.t, char: current.char, ms: Math.round(eventTime(e) - fix.since),
+          wrong: fix.wrong, replays: fix.replays,
+        });
         advance();
       } else {
+        if (key) fix.wrong.push(key);
         armIdle(performance.now()); // a wrong key still counts as being here
       }
       break;
     }
     case "listening": {
-      if (isSpace) return replay();
+      if (isSpace) return replay(eventTime(e));
       const ch = normalizeKey(e);
       if (ch) {
         e.preventDefault();
-        answer(ch);
+        answer(ch, eventTime(e));
       }
       break;
     }
@@ -592,6 +667,28 @@ async function boot() {
     ui.storage.textContent = "This history was saved by a newer version of sparkgap. Update this copy before practising.";
   }
 
+  logEvent("open", {
+    app: APP_VERSION,
+    storage: store.kind,
+    level,
+    settings,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    tzOffsetMin: -new Date().getTimezoneOffset(),
+    userAgent: navigator.userAgent,
+    screen: `${screen.width}x${screen.height}@${devicePixelRatio}`,
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) markDistracted();
+    logEvent(document.hidden ? "hidden" : "visible", { state }, document.hidden);
+  });
+  window.addEventListener("blur", () => {
+    markDistracted();
+    logEvent("blur", { state });
+  });
+  window.addEventListener("focus", () => logEvent("focus", { state }));
+  window.addEventListener("pagehide", () => {
+    logEvent("close", { state, answers: sessionAttempts.length }, true);
+  });
   document.addEventListener("keydown", onKeyDown);
   $("open-settings").addEventListener("click", () => {
     if (state === "idle") {

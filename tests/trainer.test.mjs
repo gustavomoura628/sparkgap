@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  RULES, currentLevel, mastery, charStats, pickNext, shouldUnlock, weights, speedFraction, slowBound,
+  RULES, currentLevel, mastery, charStats, pickNext, pickNextWithProb, shouldUnlock, weights, speedFraction,
+  slowBound,
 } from "../web/js/trainer.js";
 
 const attempt = (char, correct, rtMs = 400, level = 2) => ({ char, answer: correct ? char : "?", correct, rtMs, level });
@@ -61,6 +62,22 @@ test("mastery rewards speed as well as accuracy", () => {
   const fast = charStats(solid(["K"], 10, 2), "K");
   const slow = charStats(Array.from({ length: 10 }, () => attempt("K", true, 1400)), "K");
   assert.ok(mastery(fast) > mastery(slow));
+});
+
+test("the pick reports its probability, and excluded characters are avoided", () => {
+  const history = solid(["K", "M", "U"], 10, 3);
+  const w = weights(history, 3);
+  const total = w.reduce((s, p) => s + p.weight, 0);
+  const { char, prob } = pickNextWithProb(history, 3, { rng: () => 0 });
+  assert.equal(char, w[0].char);
+  assert.ok(Math.abs(prob - w[0].weight / total) < 1e-12);
+  for (let i = 0; i < 50; i++) {
+    const p = pickNextWithProb(history, 3, { rng: () => i / 50, exclude: "K" });
+    assert.notEqual(p.char, "K");
+    const rest = w.filter((x) => x.char !== "K");
+    const sum = rest.reduce((s, x) => s + x.weight, 0);
+    assert.ok(Math.abs(p.prob - rest.find((x) => x.char === p.char).weight / sum) < 1e-12);
+  }
 });
 
 test("speed fraction runs linearly from the slow bound to the target", () => {
