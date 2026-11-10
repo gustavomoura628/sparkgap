@@ -1,6 +1,6 @@
 // Lesson grouping and statistics. Pure functions over the attempt history.
 //
-// A lesson is one minute of active drilling. Each attempt carries:
+// A lesson is a fixed number of answers (LESSON_SIZE). Each attempt carries:
 //   lesson  lesson number (assigned by the app; derived here for older records)
 //   durMs   active time credited to this answer (pauses excluded, idle capped)
 //   charMs  how long the character took to play
@@ -9,7 +9,7 @@
 
 import { timeline } from "./morse.js";
 
-export const LESSON_MS = 60_000;     // active time per lesson
+export const LESSON_SIZE = 50;       // answers per lesson: about one minute at full speed
 export const IDLE_CAP_MS = 20_000;   // most active time one answer can be credited with
 export const NEW_SITTING_MS = 10 * 60_000; // a gap this long starts a new lesson
 const FALLBACK_DUR_MS = 1500;
@@ -53,7 +53,7 @@ export function dayKey(date) {
 export function normalize(attempts) {
   const out = [];
   let lesson = 0;
-  let lessonMs = 0;
+  let count = 0;
   let prevT = null;
   let started = false;
 
@@ -69,17 +69,17 @@ export function normalize(attempts) {
 
     let id = a.lesson;
     if (!Number.isFinite(id)) {
-      if (started && (lessonMs >= LESSON_MS || gap > NEW_SITTING_MS)) {
+      if (started && (count >= LESSON_SIZE || gap > NEW_SITTING_MS)) {
         lesson++;
-        lessonMs = 0;
+        count = 0;
       }
       id = lesson;
     } else if (id !== lesson || !started) {
-      lessonMs = 0;
+      count = 0;
       lesson = id;
     }
     started = true;
-    lessonMs += durMs;
+    count++;
 
     const charMs = Number.isFinite(a.charMs) ? a.charMs : charDurationMs(a.char, a.wpm || 20);
     out.push({ ...a, lesson: id, durMs, charMs });
@@ -115,7 +115,7 @@ function summarizeChars(items) {
   return out;
 }
 
-/** Summaries of every lesson, in order. `complete` lessons lasted the full minute. */
+/** Summaries of every lesson, in order. `complete` lessons reached LESSON_SIZE answers. */
 export function lessons(normalized) {
   const groups = new Map();
   for (const a of normalized) {
@@ -141,7 +141,7 @@ export function lessons(normalized) {
       level: Math.max(...items.map((a) => a.level || 2)),
       activeMs,
       score: lessonScore(items, acc),
-      complete: activeMs >= LESSON_MS,
+      complete: items.length >= LESSON_SIZE,
       perChar: summarizeChars(items),
     });
   }
@@ -305,4 +305,49 @@ export function smooth(values, smoothness, xs = values.map((_, i) => i)) {
     const fit = sxx > 1e-9 * sw ? my + (sxy / sxx) * (x0 - mx) : my;
     return clamp(fit, lo, hi);
   });
+}
+
+/**
+ * Compare answers given with and without a boolean flag (for example `music`).
+ * Records without the flag are ignored. The differences are matched: they are
+ * computed within each (level, character) pair that has at least `minEach`
+ * answers on both sides, then averaged weighted by the smaller side, so a
+ * different mix of characters or levels does not skew the result.
+ * Differences are "flag on" minus "flag off".
+ */
+export function flagEffect(attempts, flag, minEach = 3) {
+  const tagged = attempts.filter((a) => typeof a[flag] === "boolean");
+  const summary = (xs) => {
+    const correct = xs.filter((a) => a.correct);
+    return {
+      n: xs.length,
+      acc: xs.length ? correct.length / xs.length : null,
+      medianRt: median(correct.map((a) => a.rtMs)),
+    };
+  };
+  const cells = new Map();
+  for (const a of tagged) {
+    const k = `${a.level}\u0000${a.char}`;
+    if (!cells.has(k)) cells.set(k, { on: [], off: [] });
+    cells.get(k)[a[flag] ? "on" : "off"].push(a);
+  }
+  let wAcc = 0, accDiff = 0, wRt = 0, rtDiff = 0;
+  for (const { on, off } of cells.values()) {
+    if (on.length < minEach || off.length < minEach) continue;
+    const w = Math.min(on.length, off.length);
+    const [sOn, sOff] = [summary(on), summary(off)];
+    wAcc += w;
+    accDiff += w * (sOn.acc - sOff.acc);
+    if (sOn.medianRt != null && sOff.medianRt != null) {
+      wRt += w;
+      rtDiff += w * (sOn.medianRt - sOff.medianRt);
+    }
+  }
+  return {
+    on: summary(tagged.filter((a) => a[flag])),
+    off: summary(tagged.filter((a) => !a[flag])),
+    matched: wAcc,
+    accDiff: wAcc ? accDiff / wAcc : null,
+    rtDiff: wRt ? rtDiff / wRt : null,
+  };
 }

@@ -14,6 +14,8 @@
     <h1 class="wordmark">sparkgap</h1>
     <p class="readout" id="readout"></p>
     <nav class="nav">
+      <button type="button" class="ghost toggle" id="music" aria-pressed="false"
+              title="Marks answers given while listening to music, so the profile can compare">Music off</button>
       <a class="ghost" href="profile.html">Profile</a>
       <button type="button" class="ghost" id="open-settings">Settings</button>
     </nav>
@@ -40,6 +42,8 @@
         <div class="meter thin" aria-hidden="true"><span id="lesson-fill"></span></div>
       </div>
     </section>
+
+    <div class="strip" id="strip" role="img"></div>
 
     <section class="stage" id="stage" aria-live="polite">
       <p class="status" id="status">Press any key or click here to start</p>

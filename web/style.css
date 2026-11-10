@@ -102,6 +102,18 @@ button {
   padding: 0.3rem 0.9rem;
 }
 .ghost:hover { border-color: var(--bone-dim); }
+.toggle::before {
+  content: "";
+  display: inline-block;
+  width: 0.55em;
+  height: 0.55em;
+  margin-right: 0.45em;
+  border-radius: 50%;
+  background: var(--lamp-off);
+  box-shadow: inset 0 0 0 1px var(--plate-edge);
+}
+.toggle[aria-pressed="true"] { border-color: var(--amber); }
+.toggle[aria-pressed="true"]::before { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
 
 .primary {
   background: var(--amber);
@@ -122,6 +134,32 @@ main {
 }
 
 /* Stage: the character being drilled ----------------------------------------- */
+
+/* Lesson history: one cell per answer. No bar or dot shapes here: they read as Morse. */
+.strip {
+  display: grid;
+  grid-template-columns: repeat(25, 1.6rem);
+  gap: 0.3rem;
+  justify-content: center;
+  margin: 1.75rem auto 0;
+}
+.cell {
+  height: 1.9rem;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--lamp-off);
+  font-weight: 600;
+  font-size: var(--step-0);
+  line-height: 1;
+}
+.cell.hit { background: var(--plate); color: var(--bone); }
+.cell.miss {
+  color: var(--miss);
+  background: color-mix(in oklab, var(--miss) 22%, var(--enamel));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--miss) 55%, transparent);
+}
+.cell.masked { background: var(--enamel); box-shadow: inset 0 0 0 2px var(--amber); }
 
 .stage {
   flex: 1;
@@ -407,6 +445,7 @@ main.page { gap: 1.25rem; padding-top: 0.5rem; }
   gap: 0.75rem;
   margin: 0.75rem 0 0;
 }
+.tiles.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .tile { padding: 0.7rem 0.85rem; border-radius: 8px; background: var(--enamel); }
 .tile dt { color: var(--bone-dim); font-size: var(--step--1); }
 .tile dd { margin: 0.15rem 0 0; font-size: var(--step-2); font-weight: 600; font-variant-numeric: normal; }
@@ -468,11 +507,12 @@ main.page { gap: 1.25rem; padding-top: 0.5rem; }
 .month td.today { outline: 1px solid var(--bone); }
 
 @media (max-width: 52rem) {
-  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tiles, .tiles.four { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .strip { grid-template-columns: repeat(10, 1.6rem); }
 }
 
 @media (max-width: 34rem) {
-  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiles, .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bar { flex-wrap: wrap; gap: 0.5rem 1rem; }
   .keys .sep { display: block; height: 0.4rem; }
 }

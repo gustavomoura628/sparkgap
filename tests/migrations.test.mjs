@@ -24,21 +24,39 @@ test("migrations are numbered in order and the last one is the current version",
   assert.equal(SCHEMA_VERSION, MIGRATIONS[MIGRATIONS.length - 1].version);
 });
 
+const v2 = MIGRATIONS.find((m) => m.version === 2);
+const v3 = MIGRATIONS.find((m) => m.version === 3);
+const sizes = (attempts) => lessons(normalize(attempts)).map((l) => l.chars);
+
 test("version 2 stores lesson, durations and copy speed on every record", () => {
-  const { attempts, version } = migrate(Array.from({ length: 50 }, (_, i) => v1(i)), 1);
-  assert.equal(version, 2);
+  const attempts = v2.up(Array.from({ length: 50 }, (_, i) => v1(i)));
   for (const a of attempts) {
     for (const k of ["lesson", "durMs", "charMs", "copyWpm"]) assert.ok(Number.isFinite(a[k]), k);
   }
   assert.equal(attempts[0].charMs, 540);
 });
 
-test("version 2 keeps lesson boundaries identical to the derived ones", () => {
-  const old = Array.from({ length: 120 }, (_, i) => v1(i));
-  const migrated = migrate(old, 1).attempts;
-  const before = lessons(normalize(old)).map((l) => [l.id, l.chars]);
-  const after = lessons(normalize(migrated)).map((l) => [l.id, l.chars]);
-  assert.deepEqual(after, before);
+test("version 2 groups lessons by one minute of active time, as it shipped", () => {
+  // Answers 1.5 s apart: 40 per minute.
+  assert.deepEqual(sizes(v2.up(Array.from({ length: 120 }, (_, i) => v1(i)))), [40, 40, 40]);
+});
+
+test("version 3 regroups lessons into 50 answers", () => {
+  const migrated = migrate(Array.from({ length: 120 }, (_, i) => v1(i)), 1);
+  assert.equal(migrated.version, 3);
+  assert.deepEqual(sizes(migrated.attempts), [50, 50, 20]);
+});
+
+test("version 3 starts a new lesson after a break", () => {
+  const late = (i) => ({ ...v1(i), t: new Date(T0 + 11 * 60_000 + i * 1500).toISOString() });
+  const history = [...Array.from({ length: 10 }, (_, i) => v1(i)), ...Array.from({ length: 5 }, (_, i) => late(i))];
+  assert.deepEqual(sizes(v3.up(v2.up(history))), [10, 5]);
+});
+
+test("version 3 matches the lessons derived for unlabelled history", () => {
+  const late = (i) => ({ ...v1(i), t: new Date(T0 + 3_600_000 + i * 1500).toISOString() });
+  const old = [...Array.from({ length: 73 }, (_, i) => v1(i)), ...Array.from({ length: 64 }, (_, i) => late(i))];
+  assert.deepEqual(sizes(migrate(old, 1).attempts), sizes(old));
 });
 
 test("migrating twice changes nothing", () => {

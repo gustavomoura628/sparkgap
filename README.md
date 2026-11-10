@@ -40,11 +40,20 @@ Rules and thresholds live in [`web/js/trainer.js`](web/js/trainer.js) (`RULES`).
 
 ## Lessons and statistics
 
-A lesson is one minute of active drilling. Pauses do not count, and a single answer is credited
-with at most 20 seconds, so walking away mid-drill does not inflate practice time. An unfinished
-lesson continues if you come back within 10 minutes.
+A lesson is 50 answers, about one minute of drilling at full speed. A break of more than 10 minutes
+starts a new lesson; otherwise an unfinished lesson continues after a reload. Practice time counts
+only active drilling, and pauses do not count.
 
-The practice screen shows, for the last complete lesson:
+If no key is pressed for 5 seconds after a character finishes, the drill stops. The unanswered
+character is dropped: it is not recorded, and the time since the previous answer counts toward
+neither the lesson nor practice time. The next key starts the drill again with a different
+character, so the dropped one cannot be remembered and answered late.
+
+Above the prompt, a strip of 50 cells tracks the current lesson. The character being played is a
+masked cell, so it cannot be read before it is heard; answered characters are revealed, and misses are
+marked in red (hover one to see what was typed).
+
+The practice screen also shows, for the last complete lesson:
 
 - **Reaction**: median time from the end of a character to your key press, for correct answers.
 - **Accuracy**, **score**, and **copy speed**, each with the change from the lesson before.
@@ -57,6 +66,11 @@ time, a per-character reaction chart with its learning rate, per-character avera
 a Morse tree shaded by speed or miss rate, a confusion matrix of wrong answers, and a practice calendar.
 Every chart can be read with the keyboard (focus it, then use the arrow keys) and has a table view.
 
+The **Music** switch at the top of the practice page marks answers given while listening to music. It
+stays on until switched off, across reloads. The profile compares reaction time and accuracy with and
+without music, matching the same character at the same level so a different character mix does not
+skew the result.
+
 **Copy speed** is `12000 / (character duration ms + reaction time ms)` in words per minute: the rate at
 which characters could be copied if each took its playing time plus your reaction time.
 **Score** gives each correct answer `level × 1000 / (reaction ms + 500)` points, then multiplies the
@@ -67,12 +81,13 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false}
 ```
 
 `rtMs` is negative when the answer came before the character finished playing. Newer records also carry
 `lesson`, `durMs` (active time credited to the answer), `charMs` (how long the character played) and
-`copyWpm`. Older records without them get them derived from their timestamps.
+`copyWpm`. Older records without them get them derived from their timestamps. `music` records the
+state of the **Music** switch on the practice page; answers recorded before it existed do not have it.
 Use `--data-dir` to store data somewhere else. Settings are kept in `settings.json` in the same directory.
 
 Without the server, for example on static hosting, the app keeps history in the browser's `localStorage`.
@@ -94,6 +109,7 @@ History saved by a newer version of the app is never modified by an older one.
 |---|---|
 | 1 | Original format, before versioning |
 | 2 | Every answer stores `lesson`, `durMs`, `charMs` and `copyWpm` |
+| 3 | Lessons regrouped into 50 answers each (previously one minute of active time) |
 
 ## Development
 
@@ -102,7 +118,8 @@ node --test tests/*.test.mjs   # unit tests (Node 18+)
 ```
 
 To change the history format, append a migration to `MIGRATIONS` in `web/js/migrations.js` with the
-next version number, add a row to the version table above, and add a test. Never edit a migration that
+next version number, add a row to the version table above, and add a test. A migration must not call
+code that may change later; copy any logic it needs into `migrations.js`. Never edit a migration that
 has already been released: existing histories have already run it.
 
 | Path | Contents |

@@ -7,11 +7,14 @@ import * as T from "./trainer.js";
 import * as S from "./stats.js";
 import { loadHistory, SCHEMA_VERSION } from "./migrations.js";
 
-const DEFAULTS = Object.freeze({ wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15 });
+const DEFAULTS = Object.freeze({
+  wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15, music: false,
+});
 const LIMITS = {
   wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], dailyGoalMin: [1, 240],
 };
 const HIT_PAUSE_MS = 450;
+const IDLE_MS = 5000; // no key this long after a character ends: drop it and stop the drill
 
 const $ = (id) => document.getElementById(id);
 const ui = {
@@ -34,6 +37,8 @@ const ui = {
   streak: $("streak"),
   lessonLabel: $("lesson-label"),
   lessonFill: $("lesson-fill"),
+  music: $("music"),
+  strip: $("strip"),
 };
 
 const keyer = new Keyer();
@@ -56,7 +61,9 @@ let generation = 0; // bumped to cancel an in-flight sequence (e.g. on pause)
 let activeSince = null; // performance.now() when counting resumed; null while stopped
 let bankedMs = 0;       // time counted before a pause
 let lessonId = 0;
-let lessonMs = 0;
+let lessonCount = 0;
+let idleTimer = null;
+let skipped = null; // character dropped by the idle stop; the next prompt avoids it
 
 const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs });
 
@@ -190,15 +197,84 @@ function renderProgress() {
       : `Newest: ${ch}, not practised yet (target ${settings.targetRtMs} ms)`;
   }
 
-  ui.lessonLabel.textContent = `Lesson ${complete.length + 1}`;
-  ui.lessonFill.style.width = `${Math.min(100, (lessonMs / S.LESSON_MS) * 100)}%`;
+  ui.lessonLabel.textContent = `Lesson ${complete.length + 1}, ${lessonCount} of ${S.LESSON_SIZE}`;
+  ui.lessonFill.style.width = `${Math.min(100, (lessonCount / S.LESSON_SIZE) * 100)}%`;
 }
 
 function renderReadout() {
   ui.readout.textContent = `${settings.wpm} wpm, ${settings.frequency} Hz`;
+  ui.music.setAttribute("aria-pressed", String(settings.music));
+  ui.music.textContent = settings.music ? "Music on" : "Music off";
+}
+
+/** One cell per answer in the lesson: answered characters revealed, misses marked, the current one masked. */
+function buildStrip() {
+  ui.strip.replaceChildren(...Array.from({ length: S.LESSON_SIZE }, () => {
+    const cell = document.createElement("span");
+    cell.className = "cell";
+    return cell;
+  }));
+}
+
+function renderStrip() {
+  // While an answer is on screen, keep showing its lesson: the last answer rolls the lesson over.
+  const lid = current?.attempt ? current.attempt.lesson : lessonId;
+  const items = attempts.filter((a) => a.lesson === lid);
+  const waiting = current && !current.answered ? items.length : -1;
+  const cells = ui.strip.children;
+  for (let i = 0; i < cells.length; i++) {
+    const a = items[i];
+    const cell = cells[i];
+    cell.textContent = a ? a.char : "";
+    cell.className = a ? (a.correct ? "cell hit" : "cell miss") : i === waiting ? "cell masked" : "cell";
+    if (a && !a.correct) cell.title = `${a.char}, typed ${a.answer}`;
+    else cell.removeAttribute("title");
+  }
+  const misses = items.filter((a) => !a.correct).length;
+  ui.strip.setAttribute("aria-label",
+    `This lesson: ${items.length} of ${S.LESSON_SIZE} answered, ${misses} missed`);
+}
+
+/** Record whether music is playing; saved with every answer from now on. */
+function toggleMusic() {
+  settings = { ...settings, music: !settings.music };
+  renderReadout();
+  store.saveSettings(settings).catch(() => {});
+  ui.music.blur(); // keep answer keys away from the button
 }
 
 // Drill flow --------------------------------------------------------------
+
+/** Stop the drill if no key arrives within IDLE_MS of a tone ending at `endsAt`. */
+function armIdle(endsAt) {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(goIdle, Math.max(0, endsAt - performance.now()) + IDLE_MS);
+}
+
+function disarmIdle() {
+  clearTimeout(idleTimer);
+  idleTimer = null;
+}
+
+/**
+ * Idle: drop the unanswered character and return to the start screen. Nothing
+ * is recorded and the time since the last answer is not counted, as if the
+ * drill had just been opened. The next prompt uses a different character so
+ * the dropped one cannot be remembered.
+ */
+function goIdle() {
+  if (state !== "listening" && state !== "correcting" && state !== "intro") return;
+  generation++;
+  keyer.stop();
+  skipped = state === "listening" ? current.char : null;
+  current = null;
+  state = "idle";
+  activeSince = null;
+  bankedMs = 0;
+  setStage("Stopped while idle", "", "",
+    "The unanswered character was skipped and its time not counted. Press any key or click here to continue.");
+  renderStrip();
+}
 
 function play(ch) {
   return keyer.play(ch, settings);
@@ -221,9 +297,12 @@ async function intro(ch) {
   state = "intro";
   current = null;
   renderLamps();
+  renderStrip();
   setStage("New character", ch, "intro", "Listen to it a few times. Space plays it again; any other key continues.");
   for (let i = 0; i < 3; i++) {
-    await play(ch).done;
+    const tone = play(ch);
+    armIdle(tone.endsAt);
+    await tone.done;
     if (gen !== generation) return;
     await sleep(500);
     if (gen !== generation) return;
@@ -232,21 +311,27 @@ async function intro(ch) {
 
 function prompt() {
   generation++;
-  const ch = T.pickNext(attempts, level);
+  let ch = T.pickNext(attempts, level);
+  for (let i = 0; ch === skipped && level > 1 && i < 50; i++) ch = T.pickNext(attempts, level);
+  skipped = null;
   current = { char: ch, endsAt: 0, replays: 0, answered: false };
   setStage("Type what you hear");
   current.endsAt = play(ch).endsAt;
   state = "listening";
+  armIdle(current.endsAt);
+  renderStrip();
 }
 
 function replay() {
   keyer.stop();
   current.replays++;
   current.endsAt = play(current.char).endsAt;
+  armIdle(current.endsAt);
 }
 
 async function answer(ch) {
   const gen = generation;
+  disarmIdle();
   state = "feedback";
   current.answered = true;
   const rtMs = Math.round(performance.now() - current.endsAt);
@@ -254,6 +339,13 @@ async function answer(ch) {
   const durMs = takeActiveMs();
   const charMs = Math.round(S.charDurationMs(current.char, settings.wpm));
   keyer.stop();
+
+  // A long break starts a new lesson, as it does after a reload.
+  const prev = attempts[attempts.length - 1];
+  if (prev && lessonCount > 0 && Date.now() - Date.parse(prev.t) > S.NEW_SITTING_MS) {
+    lessonId++;
+    lessonCount = 0;
+  }
 
   const attempt = {
     t: new Date().toISOString(),
@@ -270,20 +362,23 @@ async function answer(ch) {
     durMs,
     charMs,
     copyWpm: Math.round(S.copyWpm(charMs, rtMs) * 10) / 10,
+    music: settings.music,
   };
   attempts.push(attempt);
   sessionAttempts.push(attempt);
+  current.attempt = attempt;
   store.addAttempt(attempt).catch((err) => {
     ui.storage.textContent = `${err.message}. This answer was not saved.`;
   });
-  lessonMs += durMs;
-  if (lessonMs >= S.LESSON_MS) {
+  lessonCount++;
+  if (lessonCount >= S.LESSON_SIZE) {
     lessonId++;
-    lessonMs = 0;
+    lessonCount = 0;
   }
   renderLamps();
   renderSession();
   renderProgress();
+  renderStrip();
 
   if (correct) {
     setStage("Correct", current.char, "hit", rtMs < 0 ? "Before it finished" : seconds(rtMs));
@@ -298,7 +393,7 @@ async function answer(ch) {
     state = "correcting";
     await sleep(150);
     if (gen !== generation || state !== "correcting") return;
-    play(current.char);
+    armIdle(play(current.char).endsAt);
     return;
   }
   if (gen !== generation) return;
@@ -325,14 +420,19 @@ async function previewChar(ch) {
 
 function pause() {
   if (state === "paused") return;
+  disarmIdle();
   resumeTo = state === "feedback" ? "listening" : state;
   generation++;
   keyer.stop();
   state = "paused";
   if (activeSince != null) bankedMs = performance.now() - activeSince;
   activeSince = null;
-  for (const [k, v] of Object.entries(settings)) ui.form.elements[k].value = v;
+  fillForm();
   ui.dialog.showModal();
+}
+
+function fillForm() {
+  for (const k of Object.keys(LIMITS)) ui.form.elements[k].value = settings[k];
 }
 
 function readSettings() {
@@ -360,13 +460,14 @@ async function resume() {
   if (to === "intro" && introQueue.length) return intro(introQueue[0]);
   if (to === "correcting") {
     state = "correcting";
-    play(current.char);
+    armIdle(play(current.char).endsAt);
     return;
   }
   if (current && !current.answered) {
     state = "listening";
     setStage("Type what you hear");
     current.endsAt = play(current.char).endsAt;
+    armIdle(current.endsAt);
     return;
   }
   next();
@@ -410,7 +511,7 @@ function onKeyDown(e) {
       keyer.stop();
       if (isSpace) {
         generation++;
-        play(introQueue[0]);
+        armIdle(play(introQueue[0]).endsAt);
       } else {
         introQueue.shift();
         next();
@@ -419,7 +520,7 @@ function onKeyDown(e) {
     case "correcting": {
       if (isSpace) {
         keyer.stop();
-        play(current.char);
+        armIdle(play(current.char).endsAt);
         return;
       }
       if (normalizeKey(e) === current.char) {
@@ -427,6 +528,8 @@ function onKeyDown(e) {
         keyer.stop();
         generation++;
         advance();
+      } else {
+        armIdle(performance.now()); // a wrong key still counts as being here
       }
       break;
     }
@@ -446,6 +549,7 @@ function onKeyDown(e) {
 
 async function boot() {
   buildLamps();
+  buildStrip();
   store = await openStore();
   const [history, saved] = await Promise.all([loadHistory(store), store.loadSettings()]);
   attempts = history.attempts;
@@ -459,7 +563,7 @@ async function boot() {
     const recent = Date.now() - Date.parse(lastLesson.end) < S.NEW_SITTING_MS;
     if (!lastLesson.complete && recent) {
       lessonId = lastLesson.id;
-      lessonMs = lastLesson.activeMs;
+      lessonCount = lastLesson.chars;
     } else lessonId = lastLesson.id + 1;
   }
 
@@ -467,6 +571,7 @@ async function boot() {
   renderLamps();
   renderSession();
   renderProgress();
+  renderStrip();
   ui.storage.textContent = store.kind === "server"
     ? "History is saved by the local server."
     : "History is saved in this browser.";
@@ -481,12 +586,13 @@ async function boot() {
   $("open-settings").addEventListener("click", () => {
     if (state === "idle") {
       resumeTo = "idle";
-      for (const [k, v] of Object.entries(settings)) ui.form.elements[k].value = v;
+      fillForm();
       state = "paused";
       ui.dialog.showModal();
     } else pause();
   });
   $("export").addEventListener("click", exportHistory);
+  ui.music.addEventListener("click", toggleMusic);
   ui.stage.addEventListener("click", () => {
     if (state === "idle") start();
   });

@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  LESSON_MS, NEW_SITTING_MS, normalize, lessons, streaks, currentStreak, copyWpm,
-  linearFit, smooth, confusion, charTotals, dailyActive,
+  LESSON_SIZE, NEW_SITTING_MS, normalize, lessons, streaks, currentStreak, copyWpm,
+  linearFit, smooth, confusion, charTotals, dailyActive, flagEffect,
 } from "../web/js/stats.js";
 
 const T0 = Date.parse("2026-01-05T10:00:00Z");
@@ -11,15 +11,13 @@ const rec = (i, extra = {}) => ({
   rtMs: 300, level: 2, wpm: 20, ...extra,
 });
 
-test("old records are split into one-minute lessons by their timestamps", () => {
-  const history = Array.from({ length: 100 }, (_, i) => rec(i)); // 1.5 s apart
-  const n = normalize(history);
-  // 40 answers x 1.5 s = 60 s per lesson
-  assert.equal(n[39].lesson, 0);
-  assert.equal(n[40].lesson, 1);
-  assert.equal(n[80].lesson, 2);
-  const ls = lessons(n);
-  assert.deepEqual(ls.map((l) => l.complete), [true, true, false]);
+test("records without a lesson number are grouped into lessons of LESSON_SIZE answers", () => {
+  assert.equal(LESSON_SIZE, 50);
+  const n = normalize(Array.from({ length: 120 }, (_, i) => rec(i)));
+  assert.equal(n[49].lesson, 0);
+  assert.equal(n[50].lesson, 1);
+  assert.equal(n[100].lesson, 2);
+  assert.deepEqual(lessons(n).map((l) => l.complete), [true, true, false]);
 });
 
 test("a long break starts a new lesson", () => {
@@ -49,14 +47,17 @@ test("copy speed counts playing time plus reaction time", () => {
 
 test("lesson summary", () => {
   const items = [
-    rec(0, { lesson: 0, durMs: LESSON_MS / 2 }),
-    rec(1, { lesson: 0, durMs: LESSON_MS / 2, correct: false, answer: "M", rtMs: 900 }),
+    rec(0, { lesson: 0, durMs: 1000 }),
+    rec(1, { lesson: 0, durMs: 1000, correct: false, answer: "M", rtMs: 900 }),
   ];
   const [l] = lessons(normalize(items));
   assert.equal(l.chars, 2);
   assert.equal(l.acc, 0.5);
   assert.equal(l.medianRt, 300);
-  assert.equal(l.complete, true);
+  assert.equal(l.activeMs, 2000);
+  assert.equal(l.complete, false);
+  const full = Array.from({ length: LESSON_SIZE }, (_, i) => rec(i, { lesson: 0, durMs: 1000 }));
+  assert.equal(lessons(normalize(full))[0].complete, true);
 });
 
 test("streaks find the longest run above each threshold", () => {
@@ -104,4 +105,28 @@ test("confusion and per-character totals", () => {
 test("daily active time sums durations per local day", () => {
   const n = normalize([rec(0, { durMs: 1000 }), rec(1, { durMs: 2000 })]);
   assert.equal([...dailyActive(n).values()][0], 3000);
+});
+
+test("flag effect compares matched character and level pairs", () => {
+  const a = (char, level, music, rtMs, correct = true) =>
+    ({ t: "2026-01-05T10:00:00Z", char, answer: correct ? char : "X", correct, rtMs, level, music });
+  const xs = [
+    // K: music adds 100 ms
+    ...Array.from({ length: 4 }, () => a("K", 2, false, 400)),
+    ...Array.from({ length: 4 }, () => a("K", 2, true, 500)),
+    // M: practised mostly with music and slower overall; no gap within M
+    ...Array.from({ length: 3 }, () => a("M", 2, false, 900)),
+    ...Array.from({ length: 10 }, () => a("M", 2, true, 900)),
+    // Untagged history is ignored.
+    a("K", 2, undefined, 5000),
+  ];
+  const e = flagEffect(xs, "music");
+  assert.equal(e.on.n, 14);
+  assert.equal(e.off.n, 7);
+  assert.equal(e.matched, 7);
+  // Weighted by the smaller side: (4 x 100 + 3 x 0) / 7
+  assert.ok(Math.abs(e.rtDiff - 400 / 7) < 1e-9);
+  assert.equal(e.accDiff, 0);
+  // The raw medians differ much more, because of the character mix.
+  assert.equal(e.on.medianRt - e.off.medianRt, 500);
 });

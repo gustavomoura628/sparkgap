@@ -41,7 +41,7 @@ function emptyNote(container, text) {
   container.replaceChildren(el("p", { class: "empty" }, text));
 }
 
-const NEED_LESSON = "Finish a one-minute lesson to fill this chart.";
+const NEED_LESSON = `Finish a ${S.LESSON_SIZE}-answer lesson to fill this chart.`;
 
 // Tiles ----------------------------------------------------------------------
 
@@ -53,6 +53,38 @@ function tiles(container, t) {
     ["Average reaction", ms(t.avgRt), t.avgCopy != null ? `average copy speed ${wpm(t.avgCopy)}` : null],
     ["Top accuracy", pct(t.topAcc)],
     ["Average accuracy", pct(t.avgAcc)],
+  ];
+  container.replaceChildren(...items.map(([label, value, note]) => {
+    const div = el("div", { class: "tile" });
+    div.append(el("dt", {}, label), el("dd", {}, value));
+    if (note) div.append(el("dd", { class: "note" }, note));
+    return div;
+  }));
+}
+
+// Music ----------------------------------------------------------------------
+
+const MIN_MATCHED = 30; // matched answers needed before showing a difference
+
+function musicEffect(container, normalized) {
+  const e = S.flagEffect(normalized, "music");
+  if (!e.on.n || !e.off.n) {
+    return emptyNote(container, e.on.n + e.off.n
+      ? `So far every recorded answer was ${e.on.n ? "with" : "without"} music. Practise both ways to compare.`
+      : "Turn on the Music switch on the practice page while listening to music. Answers record it from then on.");
+  }
+  const signed = (v, unit, digits = 0) =>
+    `${v > 0 ? "+" : v < 0 ? "\u2212" : "\u00b1"}${Math.abs(v).toFixed(digits)}${unit}`;
+  const side = (label, s) => [label, ms(s.medianRt), `${pct(s.acc)} accuracy, ${s.n.toLocaleString()} answers`];
+  const enough = e.matched >= MIN_MATCHED;
+  const items = [
+    side("Without music", e.off),
+    side("With music", e.on),
+    ["Reaction with music", enough && e.rtDiff != null ? signed(e.rtDiff, " ms") : "\u2013",
+      !enough ? `needs ${MIN_MATCHED} matched answers, ${e.matched} so far`
+        : e.rtDiff == null ? null : e.rtDiff > 0 ? "slower" : e.rtDiff < 0 ? "faster" : "no difference"],
+    ["Accuracy with music", enough ? signed(e.accDiff * 100, " pts", 1) : "\u2013",
+      enough ? `over ${e.matched} matched answers` : null],
   ];
   container.replaceChildren(...items.map(([label, value, note]) => {
     const div = el("div", { class: "tile" });
@@ -493,6 +525,7 @@ async function boot() {
 
   tiles($("tiles-all"), S.totals(complete, totalMs));
   tiles($("tiles-today"), S.totals(completeToday, days.get(today) || 0));
+  musicEffect($("music"), normalized);
   streakList($("streaks"), complete);
   overview($("overview"), complete);
   trends($("trends"), complete);

@@ -6,16 +6,53 @@
 // written before versioning existed is version 1.
 //
 // To change the history format: append a migration with the next version
-// number. Never edit a migration that has already shipped.
+// number. Never edit a migration that has already shipped. Migrations must
+// not depend on code that may change later (such as the lesson rules in
+// stats.js): copy any logic they need into this file so that their result
+// stays the same in every release.
 
-import { copyWpm, normalize } from "./stats.js";
+import { charDurationMs, copyWpm } from "./stats.js";
+
+const MINUTE = 60_000;
+
+/** Version 2 lesson and duration derivation, frozen as it shipped. */
+function deriveV2(attempts) {
+  const out = [];
+  let lesson = 0;
+  let lessonMs = 0;
+  let prevT = null;
+  let started = false;
+  for (const a of attempts) {
+    const t = Date.parse(a.t);
+    const gap = prevT == null || Number.isNaN(t) ? Infinity : t - prevT;
+    prevT = Number.isNaN(t) ? prevT : t;
+    let durMs = a.durMs;
+    if (!Number.isFinite(durMs)) durMs = gap > 10 * MINUTE ? 1500 : Math.min(gap, 20_000);
+    let id = a.lesson;
+    if (!Number.isFinite(id)) {
+      if (started && (lessonMs >= MINUTE || gap > 10 * MINUTE)) {
+        lesson++;
+        lessonMs = 0;
+      }
+      id = lesson;
+    } else if (id !== lesson || !started) {
+      lessonMs = 0;
+      lesson = id;
+    }
+    started = true;
+    lessonMs += durMs;
+    const charMs = Number.isFinite(a.charMs) ? a.charMs : charDurationMs(a.char, a.wpm || 20);
+    out.push({ ...a, lesson: id, durMs, charMs });
+  }
+  return out;
+}
 
 export const MIGRATIONS = Object.freeze([
   {
     version: 2,
     summary: "Store the lesson number, active time, character duration and copy speed on every answer.",
     up(attempts) {
-      return normalize(attempts).map((a) => ({
+      return deriveV2(attempts).map((a) => ({
         ...a,
         durMs: Math.round(a.durMs),
         charMs: Math.round(a.charMs),
@@ -23,6 +60,27 @@ export const MIGRATIONS = Object.freeze([
           ? a.copyWpm
           : Math.round(copyWpm(a.charMs, a.rtMs) * 10) / 10,
       }));
+    },
+  },
+  {
+    version: 3,
+    summary: "Regroup lessons into 50 answers each (they were one minute of active time).",
+    up(attempts) {
+      // A new lesson starts every 50 answers, or after a break of more than 10 minutes.
+      let lesson = -1;
+      let count = 0;
+      let prevT = null;
+      return attempts.map((a) => {
+        const t = Date.parse(a.t);
+        const gap = prevT == null || Number.isNaN(t) ? 0 : t - prevT;
+        if (!Number.isNaN(t)) prevT = t;
+        if (lesson < 0 || count >= 50 || gap > 10 * MINUTE) {
+          lesson++;
+          count = 0;
+        }
+        count++;
+        return { ...a, lesson };
+      });
     },
   },
 ]);
