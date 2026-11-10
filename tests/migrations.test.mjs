@@ -26,6 +26,7 @@ test("migrations are numbered in order and the last one is the current version",
 
 const v2 = MIGRATIONS.find((m) => m.version === 2);
 const v3 = MIGRATIONS.find((m) => m.version === 3);
+const v4 = MIGRATIONS.find((m) => m.version === 4);
 const sizes = (attempts) => lessons(normalize(attempts)).map((l) => l.chars);
 
 test("version 2 stores lesson, durations and copy speed on every record", () => {
@@ -43,7 +44,7 @@ test("version 2 groups lessons by one minute of active time, as it shipped", () 
 
 test("version 3 regroups lessons into 50 answers", () => {
   const migrated = migrate(Array.from({ length: 120 }, (_, i) => v1(i)), 1);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, SCHEMA_VERSION);
   assert.deepEqual(sizes(migrated.attempts), [50, 50, 20]);
 });
 
@@ -91,4 +92,22 @@ test("a history from a newer app version is not touched", async () => {
   const r = await loadHistory(store);
   assert.equal(r.newer, true);
   assert.equal(store.replaced, null);
+});
+
+test("version 4 times replayed answers from the first play", () => {
+  const base = { char: "K", correct: true, charMs: 540, copyWpm: 20 };
+  const [plain, replayed, old] = v4.up([
+    { ...base, rtMs: 400, replays: 0, rtFirstMs: 400 },
+    { ...base, rtMs: -120, replays: 1, rtFirstMs: 2900 },
+    { ...base, rtMs: -80, replays: 2 },
+  ]);
+  assert.deepEqual(plain, { ...base, rtMs: 400, replays: 0 });
+  assert.equal(replayed.rtMs, 2900);
+  assert.equal(replayed.rtLastMs, -120);
+  assert.equal(replayed.copyWpm, Math.round((12_000 / (540 + 2900)) * 10) / 10);
+  assert.ok(!("rtFirstMs" in replayed));
+  // Recorded before rtFirstMs existed: the time cannot be recovered.
+  assert.equal(old.rtMs, null);
+  assert.equal(old.rtLastMs, -80);
+  assert.equal(old.copyWpm, null);
 });

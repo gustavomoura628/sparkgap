@@ -3,7 +3,7 @@
 //
 // An attempt looks like:
 //   { char: "K", answer: "K", correct: true, rtMs: 412, level: 2, ... }
-// where rtMs is measured from the end of the last tone to the key press
+// where rtMs is measured from the end of the first play to the key press
 // (negative if the answer came before the character finished).
 
 import { KOCH_ORDER } from "./morse.js";

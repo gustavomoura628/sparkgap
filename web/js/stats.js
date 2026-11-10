@@ -16,6 +16,9 @@ const FALLBACK_DUR_MS = 1500;
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
 
+/** True for a correct answer whose reaction time is known (only those count towards speed). */
+export const timed = (a) => a.correct && Number.isFinite(a.rtMs);
+
 export function median(xs) {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -91,7 +94,7 @@ export function normalize(attempts) {
 export function lessonScore(items, accuracy) {
   let points = 0;
   for (const a of items) {
-    if (!a.correct) continue;
+    if (!timed(a)) continue;
     points += (a.level || 2) * (1000 / (Math.max(0, a.rtMs) + 500));
   }
   return Math.round(points * accuracy);
@@ -109,7 +112,7 @@ function summarizeChars(items) {
     out.set(c, {
       n: xs.length,
       correct: correct.length,
-      medianRt: median(correct.map((a) => a.rtMs)),
+      medianRt: median(xs.filter(timed).map((a) => a.rtMs)),
     });
   }
   return out;
@@ -125,7 +128,8 @@ export function lessons(normalized) {
   const out = [];
   for (const [id, items] of [...groups].sort((a, b) => a[0] - b[0])) {
     const correct = items.filter((a) => a.correct);
-    const rts = correct.map((a) => a.rtMs);
+    const timedItems = items.filter(timed);
+    const rts = timedItems.map((a) => a.rtMs);
     const acc = correct.length / items.length;
     const activeMs = items.reduce((s, a) => s + a.durMs, 0);
     out.push({
@@ -137,7 +141,7 @@ export function lessons(normalized) {
       acc,
       medianRt: median(rts),
       meanRt: mean(rts),
-      copyWpm: correct.length ? median(correct.map((a) => copyWpm(a.charMs, a.rtMs))) : null,
+      copyWpm: timedItems.length ? median(timedItems.map((a) => copyWpm(a.charMs, a.rtMs))) : null,
       level: Math.max(...items.map((a) => a.level || 2)),
       activeMs,
       score: lessonScore(items, acc),
@@ -229,7 +233,7 @@ export function charTotals(normalized) {
     const c = by.get(a.char);
     if (a.correct) {
       c.hits++;
-      c.rts.push(a.rtMs);
+      if (timed(a)) c.rts.push(a.rtMs);
     } else c.misses++;
   }
   for (const c of by.values()) {
@@ -322,7 +326,7 @@ export function flagEffect(attempts, flag, minEach = 3) {
     return {
       n: xs.length,
       acc: xs.length ? correct.length / xs.length : null,
-      medianRt: median(correct.map((a) => a.rtMs)),
+      medianRt: median(xs.filter(timed).map((a) => a.rtMs)),
     };
   };
   const cells = new Map();

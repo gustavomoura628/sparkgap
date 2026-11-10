@@ -83,6 +83,25 @@ export const MIGRATIONS = Object.freeze([
       });
     },
   },
+  {
+    version: 4,
+    summary: "Time answers from the end of the first play, so a replay no longer restarts the clock.",
+    up(attempts) {
+      // Replayed answers take their time from the first play (rtFirstMs) and
+      // keep the old value as rtLastMs. Replayed answers recorded before
+      // rtFirstMs existed get no reaction time (null), since it cannot be
+      // recovered. rtFirstMs is dropped: it is now the same as rtMs.
+      return attempts.map((a) => {
+        const { rtFirstMs, ...rest } = a;
+        if (!(a.replays > 0)) return rest;
+        const rtMs = Number.isFinite(rtFirstMs) ? rtFirstMs : null;
+        const copy = rtMs != null && Number.isFinite(a.charMs)
+          ? Math.round((12_000 / (a.charMs + Math.max(0, rtMs))) * 10) / 10
+          : null;
+        return { ...rest, rtMs, rtLastMs: a.rtMs, copyWpm: copy };
+      });
+    },
+  },
 ]);
 
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

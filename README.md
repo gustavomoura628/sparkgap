@@ -16,7 +16,7 @@ The app opens at <http://127.0.0.1:8073/>. Press any key to start.
 | Key | Action |
 |---|---|
 | Letters, digits, `. , ? / =` | Answer |
-| `Space` | Play the character again |
+| `Space` | Play the character again (the reaction time still counts from the end of the first play) |
 | `Esc` | Pause and open settings |
 
 ## How it works
@@ -83,13 +83,13 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.5.0","session":"m3x9k2ab4f","rtFirstMs":412,"pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.6.0","session":"m3x9k2ab4f","pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |
 |---|---|
-| `rtMs` | Reaction time from the end of the last play of the character; negative if the answer came before it finished |
-| `rtFirstMs`, `replayAtMs` | Reaction time from the end of the first play, and when each replay was requested (same reference) |
+| `rtMs` | Reaction time from the end of the first play of the character; negative if the answer came before it finished. `null` when it is unknown (see version 4) |
+| `rtLastMs`, `replayAtMs` | Only on replayed answers: reaction time from the end of the last play, and when each replay was requested (from the end of the first play) |
 | `lesson`, `durMs` | Lesson number and active practice time credited to the answer |
 | `charMs`, `copyWpm` | How long the character played, and the resulting copy speed |
 | `pickProb` | Probability the trainer had of choosing this character, for correcting the adaptive selection in analysis |
@@ -98,7 +98,8 @@ With the server running, history is appended to `data/attempts.jsonl`, one JSON 
 | `app`, `session` | App version and page-load identifier |
 | `music`, `targetRtMs`, `volume`, `tzOffsetMin` | Settings and local time zone offset (minutes east of UTC) at the time |
 
-Older records may lack the newer fields. Reaction times use the key press's own timestamp.
+Older records may lack the newer fields. Reaction times use the key press's own timestamp. Reaction-time
+statistics only use correct answers with a known `rtMs`; misses keep their time but never count towards speed.
 
 Events go to `data/events.jsonl` (the browser keeps the most recent 5000): `open` and `close` of the page
 (with app version, time zone and browser), `start` of the drill, `pause` and `resume`, `settings` changes,
@@ -128,6 +129,7 @@ History saved by a newer version of the app is never modified by an older one.
 | 1 | Original format, before versioning |
 | 2 | Every answer stores `lesson`, `durMs`, `charMs` and `copyWpm` |
 | 3 | Lessons regrouped into 50 answers each (previously one minute of active time) |
+| 4 | `rtMs` counts from the end of the first play, not the last replay; the old value moves to `rtLastMs`. Replayed answers recorded before the first-play time was stored get `rtMs: null` |
 
 ## Development
 

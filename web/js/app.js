@@ -167,7 +167,7 @@ function renderSession() {
     return;
   }
   const acc = sessionAttempts.filter((a) => a.correct).length / n;
-  const rt = T.median(sessionAttempts.filter((a) => a.correct).map((a) => a.rtMs));
+  const rt = T.median(sessionAttempts.filter(S.timed).map((a) => a.rtMs));
   ui.session.textContent =
     `This session: ${n} ${n === 1 ? "answer" : "answers"}, ${Math.round(acc * 100)}% correct` +
     (rt != null ? `, median reaction ${seconds(Math.max(0, rt))}.` : ".");
@@ -383,7 +383,8 @@ async function answer(ch, at = performance.now()) {
   disarmIdle();
   state = "feedback";
   current.answered = true;
-  const rtMs = Math.round(at - current.endsAt);
+  // Timed from the end of the first play: a replay must not restart the clock.
+  const rtMs = Math.round(at - current.firstEndsAt);
   const correct = ch === current.char;
   const durMs = takeActiveMs();
   const charMs = Math.round(S.charDurationMs(current.char, settings.wpm));
@@ -415,8 +416,7 @@ async function answer(ch, at = performance.now()) {
     // Context for later analysis
     app: APP_VERSION,
     session: SESSION,
-    rtFirstMs: Math.round(at - current.firstEndsAt),
-    ...(current.replayAt.length ? { replayAtMs: current.replayAt } : {}),
+    ...(current.replays ? { rtLastMs: Math.round(at - current.endsAt), replayAtMs: current.replayAt } : {}),
     pickProb: Math.round(current.prob * 10_000) / 10_000,
     targetRtMs: settings.targetRtMs,
     volume: settings.volume,

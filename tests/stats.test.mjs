@@ -130,3 +130,12 @@ test("flag effect compares matched character and level pairs", () => {
   // The raw medians differ much more, because of the character mix.
   assert.equal(e.on.medianRt - e.off.medianRt, 500);
 });
+
+test("answers with an unknown reaction time count for accuracy but not speed", () => {
+  const items = [rec(0, { rtMs: 400 }), rec(1, { rtMs: 600 }), rec(2, { rtMs: null })];
+  const [l] = lessons(normalize(items));
+  assert.equal(l.correct, 3);
+  assert.equal(l.medianRt, 500);
+  assert.equal(charTotals(normalize(items)).get("K").medianRt, 500);
+  assert.equal(charTotals(normalize(items)).get("K").hits, 3);
+});
