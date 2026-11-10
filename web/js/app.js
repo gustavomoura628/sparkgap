@@ -43,6 +43,7 @@ const ui = {
   music: $("music"),
   strip: $("strip"),
   lampLegend: $("lamp-legend"),
+  gate: $("gate"),
 };
 
 const keyer = new Keyer();
@@ -71,6 +72,7 @@ let idleTimer = null;
 let idleFrom = 0;   // performance.now() the idle timer counts from
 let skipped = null; // character dropped by the idle stop; the next prompt avoids it
 let introInfo = null; // { char, since, plays } for the character being introduced
+let gate = null; // progress towards unlocking the next character (trainer.unlockProgress)
 
 const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs });
 
@@ -122,7 +124,14 @@ function buildLamps() {
       b.className = "lamp";
       b.textContent = ch;
       b.dataset.char = ch;
-      b.addEventListener("click", () => previewChar(ch));
+      b.addEventListener("click", () => {
+        previewChar(ch);
+        if (b.dataset.state === "next") showGate(b);
+      });
+      b.addEventListener("pointerenter", () => b.dataset.state === "next" && showGate(b));
+      b.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && hideGate());
+      b.addEventListener("focus", () => b.dataset.state === "next" && showGate(b));
+      b.addEventListener("blur", hideGate);
       return b;
     }),
   );
@@ -132,11 +141,25 @@ function renderLamps() {
   const active = new Set(T.activeChars(level));
   const newest = KOCH_ORDER[level - 1];
   const scale = goodScale(settings.palette);
+  gate = T.unlockProgress(attempts, level, rules());
   ui.lampLegend.textContent = (settings.palette === "amber"
     ? "A lamp burns brighter as a character gets faster and more accurate."
-    : "A lamp goes from red to green as a character gets faster and more accurate.") + " Click one to hear it.";
+    : "A lamp goes from red to green as a character gets faster and more accurate.") +
+    (gate ? ` The next character, ${gate.char}, turns from grey to blue as it gets closer to unlocking; point at it to see what is left.` : "") +
+    " Click a lamp to hear it.";
   for (const b of ui.lamps.children) {
     const ch = b.dataset.char;
+    b.removeAttribute("aria-describedby");
+    if (gate && ch === gate.char) {
+      b.dataset.state = "next";
+      // Full blue is kept for the moment every check passes.
+      b.style.setProperty("--p", gate.ready ? 1 : 0.85 * gate.progress);
+      b.removeAttribute("data-newest");
+      b.removeAttribute("title");
+      b.setAttribute("aria-describedby", "gate");
+      b.setAttribute("aria-label", `${ch}, next to unlock, ${Math.round(gate.progress * 100)}% of the way`);
+      continue;
+    }
     if (!active.has(ch)) {
       b.dataset.state = "locked";
       b.style.setProperty("--m", 0);
@@ -158,6 +181,79 @@ function renderLamps() {
     b.setAttribute("aria-label", `${ch}, ${desc}`);
   }
   ui.lesson.textContent = `${level} of ${KOCH_ORDER.length} unlocked`;
+  if (!ui.gate.hidden) {
+    const lamp = gate && ui.lamps.querySelector(`[data-char="${CSS.escape(gate.char)}"]`);
+    if (lamp) showGate(lamp);
+    else hideGate();
+  }
+}
+
+// What still blocks the next character, shown next to its lamp.
+function gateTable(g) {
+  const el = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const describe = (part) => {
+    switch (part.kind) {
+      case "count":
+        return [`${part.have} ${part.unit}`, `${part.need} ${part.unit}`];
+      case "accuracy":
+        return [
+          `${part.correct}/${part.tries} correct`,
+          part.tries ? `${Math.ceil(part.need * part.tries - 1e-9)}/${part.tries}` : `${Math.round(part.need * 100)}%`,
+        ];
+      case "speed":
+        return [part.have == null ? "no time yet" : `${Math.round(part.have)} ms`, `≤ ${part.need} ms`];
+    }
+  };
+  const cells = (parts, which) => {
+    const td = el("td");
+    parts.forEach((part, i) => {
+      if (i) td.append(", ");
+      td.append(el("span", part.ok || which ? "" : "short", describe(part)[which]));
+    });
+    return td;
+  };
+  const table = el("table");
+  const head = el("tr");
+  for (const h of ["Check", "Now", "Needs", ""]) head.append(el("th", "", h));
+  table.append(el("thead"));
+  table.tHead.append(head);
+  const body = el("tbody");
+  for (const r of g.rows) {
+    const label = r.kind === "overall" ? `Last ${T.RULES.windowAll} answers`
+      : r.kind === "newest" ? `Newest (${r.char})` : r.char;
+    const unit = r.kind === "overall" ? "answers" : "tries";
+    // A row's count is implied by its accuracy ("17/20"), so show it only when it is short.
+    const parts = r.parts
+      .map((p) => ({ ...p, unit }))
+      .filter((p) => p.kind !== "count" || !p.ok || r.kind === "newest");
+    const tr = el("tr", r.ok ? "" : "blocked");
+    tr.append(el("th", "", label), cells(parts, 0), cells(parts, 1), el("td", "state", r.ok ? "ok" : "blocked"));
+    body.append(tr);
+  }
+  table.append(body);
+  const title = el("p", "gate-title");
+  title.append(el("strong", "", `Next: ${g.char}`), ` ${Math.round(g.progress * 100)}% of the way`);
+  return [title, table];
+}
+
+function showGate(lamp) {
+  if (!gate) return;
+  ui.gate.replaceChildren(...gateTable(gate));
+  ui.gate.hidden = false;
+  const box = ui.gate.offsetParent;
+  const width = ui.gate.offsetWidth;
+  const left = lamp.offsetLeft + lamp.offsetWidth / 2 - width / 2;
+  ui.gate.style.left = `${Math.max(8, Math.min(left, box.clientWidth - width - 8))}px`;
+  ui.gate.style.top = `${lamp.offsetTop + lamp.offsetHeight + 10}px`;
+}
+
+function hideGate() {
+  ui.gate.hidden = true;
 }
 
 function renderSession() {
@@ -690,6 +786,10 @@ async function boot() {
     logEvent("close", { state, answers: sessionAttempts.length }, true);
   });
   document.addEventListener("keydown", onKeyDown);
+  // On touch screens the panel opens with a tap and closes with a tap elsewhere.
+  document.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest?.('.lamp[data-state="next"]')) hideGate();
+  });
   $("open-settings").addEventListener("click", () => {
     if (state === "idle") {
       resumeTo = "idle";

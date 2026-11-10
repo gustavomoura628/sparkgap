@@ -23,14 +23,21 @@ The app opens at <http://127.0.0.1:8073/>. Press any key to start.
 
 - **Koch method.** Lessons start with two characters (`K`, `M`) sent at full speed (20 wpm by default).
   A new character unlocks after at least 50 answers since the previous unlock, at 90% accuracy or better.
-  The newest character needs 15 tries of its own with 90% on its last 10, and every other character
-  needs 80% over its last 10. Every character's median reaction time must also be at or under the
-  target (500 ms by default, adjustable in settings). Characters follow the LCWO order.
+  The newest character needs 25 tries of its own with 90% on its last 20, and every character needs at
+  least 10 recent tries with 80% over its last 20. Every character's median reaction time over its last
+  20 must also be at or under the target (500 ms by default, adjustable in settings). Characters follow
+  the LCWO order.
+- **Next character.** The lamp of the next character to unlock turns from grey to blue as the checks get
+  closer to passing. Pointing at it (or tapping it) lists every check, where it stands and what it needs.
+  Each check scores from 0 to 1: counts against their minimum, accuracy from 50% up to its threshold, and
+  reaction time from 1500 ms down to the target. A row scores its weakest check, and the overall figure is
+  the mean of the rows. Full blue is kept for the moment every check passes.
 - **Sound first.** The app never shows dot-dash patterns. Each new character is introduced by playing it
   a few times, so you learn its sound instead of a chart you decode in your head.
 - **Adaptive practice.** Characters you miss or answer slowly come up more often. The newest character
   gets extra practice for its first 25 tries. The same character never plays three times in a row.
-- **Reaction time.** Every answer records the time from the end of the last tone to the key press.
+- **Reaction time.** Every answer records the time from the end of the first play of the character to the
+  key press, so replaying it with `Space` does not restart the clock.
   Accuracy shows whether you know a character; reaction time shows whether you recognise it instantly.
   Lamp brightness combines both.
 - **Learning from misses.** After a miss, the app shows the correct character and plays it again.
@@ -83,7 +90,7 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.6.0","session":"m3x9k2ab4f","pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.7.0","session":"m3x9k2ab4f","pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |

@@ -32,6 +32,9 @@
   --scale-bad: #e0453a;
   --scale-mid: #f2c94c;
   --scale-good: #5cc160;
+  /* Next character to unlock: far (grey) to close (blue) */
+  --next-far: #7d8076;
+  --next-near: #5aa9f2;
 
   --font: "Barlow Semi Condensed", "Bahnschrift", "DIN Alternate", "Arial Narrow", sans-serif;
   --step--1: 0.875rem;
@@ -262,6 +265,47 @@ main {
   color: color-mix(in oklab, var(--bone-dim) 45%, var(--lamp-off));
   cursor: default;
 }
+
+/* The next character to unlock: grey when far away, blue when close (--p from 0 to 1). */
+.lamp[data-state="next"] {
+  background: color-mix(in oklab, var(--next-far), var(--next-near) calc(var(--p, 0) * 100%));
+  color: var(--enamel);
+  cursor: help;
+  box-shadow:
+    inset 0 2px 3px rgb(0 0 0 / 0.25),
+    0 0 calc(var(--p, 0) * 12px) color-mix(in oklab, var(--next-near) calc(var(--p, 0) * 60%), transparent);
+}
+
+.lamp-plate { position: relative; }
+
+.gate {
+  position: absolute;
+  z-index: 5;
+  width: max-content;
+  max-width: min(30rem, calc(100% - 16px));
+  padding: 0.75rem 0.9rem 0.6rem;
+  background: var(--enamel);
+  border: 1px solid var(--plate-edge);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  font-size: var(--step--1);
+}
+.gate[hidden] { display: none; }
+.gate-title { margin-bottom: 0.45rem; color: var(--bone-dim); }
+.gate-title strong { color: var(--next-near); font-weight: 600; margin-right: 0.3rem; }
+.gate table { border-collapse: collapse; }
+.gate th, .gate td {
+  padding: 0.18rem 0.9rem 0.18rem 0;
+  border-bottom: 1px solid var(--plate-edge);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.gate tr:last-child th, .gate tr:last-child td { border-bottom: 0; }
+.gate thead th { color: var(--bone-dim); font-weight: 400; }
+.gate tbody th { font-weight: 600; }
+.gate .short { color: var(--miss); }
+.gate .state { padding-right: 0; color: var(--hit); }
+.gate tr.blocked .state { color: var(--miss); }
 
 .lamp[data-newest] { outline: 1px solid var(--amber); outline-offset: 3px; }
 .lamp:focus-visible { outline: 2px solid var(--bone); outline-offset: 3px; }

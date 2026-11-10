@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   RULES, currentLevel, mastery, charStats, pickNext, pickNextWithProb, shouldUnlock, weights, speedFraction,
-  slowBound,
+  slowBound, unlockProgress,
 } from "../web/js/trainer.js";
 
 const attempt = (char, correct, rtMs = 400, level = 2) => ({ char, answer: correct ? char : "?", correct, rtMs, level });
@@ -94,4 +94,35 @@ test("unlocking also needs every character at the target reaction time", () => {
   const slow = Array.from({ length: RULES.windowAll }, (_, i) => attempt(i % 2 ? "K" : "M", true, 800, 2));
   assert.equal(shouldUnlock(slow, 2), false);
   assert.equal(shouldUnlock(slow, 2, { ...RULES, targetRtMs: 900 }), true);
+});
+
+test("unlock progress agrees with the unlock check and stays in range", () => {
+  const cases = [
+    solid(["K", "M"], 10, 2),
+    solid(["K", "M"], RULES.windowAll, 2),
+    [...solid(["K", "M"], 60, 3), ...solid(["U"], 5, 3)],
+    [...solid(["K"], 40, 2), ...Array.from({ length: 8 }, (_, i) => attempt("M", i % 2 === 0))],
+  ];
+  for (const h of cases) {
+    const level = currentLevel(h);
+    const p = unlockProgress(h, level);
+    assert.equal(p.ready, shouldUnlock(h, level));
+    assert.ok(p.progress >= 0 && p.progress <= 1);
+    assert.equal(p.ready, p.progress === 1);
+  }
+  assert.equal(unlockProgress([], 2).char, "U");
+});
+
+test("unlock progress counts accuracy from the floor and takes each row's weakest part", () => {
+  // M: 15 of 20 correct (75%), fast. Accuracy progress = (0.75 - 0.5) / (0.8 - 0.5).
+  const history = [...solid(["K"], 40, 2)];
+  for (let i = 0; i < 20; i++) history.push(attempt("M", i % 4 !== 0, 350));
+  const m = unlockProgress(history, 2).rows.find((r) => r.kind === "char" && r.char === "M");
+  assert.equal(m.ok, false);
+  assert.ok(Math.abs(m.progress - (0.75 - 0.5) / (0.8 - 0.5)) < 1e-9);
+  assert.deepEqual(m.parts.map((x) => x.ok), [true, false, true]);
+});
+
+test("unlock progress returns null when everything is unlocked", () => {
+  assert.equal(unlockProgress([], 41), null);
 });

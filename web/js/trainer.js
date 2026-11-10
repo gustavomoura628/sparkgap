@@ -12,15 +12,16 @@ export const RULES = Object.freeze({
   startLevel: 2,      // characters in the first lesson
   windowAll: 50,      // answers since the last unlock needed before the next one
   minAccAll: 0.9,     // accuracy over those answers needed to unlock the next character
-  windowChar: 10,     // recent attempts per character considered
-  minTriesChar: 6,    // each active character needs this many recent tries...
+  windowChar: 20,     // recent attempts per character considered
+  minTriesChar: 10,   // each active character needs this many recent tries...
   minAccChar: 0.8,    // ...at this accuracy before unlocking
-  minTriesNewest: 15, // the newest character needs this many tries since it was added...
+  minTriesNewest: 25, // the newest character needs this many tries since it was added...
   minAccNewest: 0.9,  // ...and this accuracy over its last windowChar tries
   targetRtMs: 500,    // every active character's median reaction time must reach this
   fastMs: 300,        // reaction times at or below this count as instant
   slowMs: 1500,       // reaction times at or above this count as slow
   newCharBoost: 25,   // the newest character is favoured for its first N tries
+  accFloor: 0.5,      // unlock progress counts accuracy from here (at or below = no progress)
 });
 
 const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
@@ -59,28 +60,72 @@ export function activeChars(level) {
 }
 
 /**
- * True when the history shows the current set is solid enough to add a character.
- * Only answers given at the current level count toward the overall window, so a
- * new character cannot unlock the next one on the strength of older history.
+ * Every check that gates the next character, with how far along each one is.
+ *
+ * Rows: the overall window (answers at the current level), the newest
+ * character (tries since it was added), and one row per active character
+ * (its last windowChar tries). Each row is made of parts (count, accuracy,
+ * speed) with a 0..1 progress; a row's progress is its weakest part, and the
+ * overall progress is the mean of the rows. `ready` is true only when every
+ * part passes. Only answers given at the current level count toward the
+ * overall window and the newest character, so a new character cannot unlock
+ * the next one on the strength of older history.
+ *
+ * Returns null when every character is already unlocked.
  */
-export function shouldUnlock(attempts, level, rules = RULES) {
-  if (level >= KOCH_ORDER.length) return false;
+export function unlockProgress(attempts, level, rules = RULES) {
+  if (level >= KOCH_ORDER.length) return null;
   const active = activeChars(level);
+  const newest = active[active.length - 1];
   const inSet = attempts.filter((a) => active.includes(a.char));
   const atLevel = inSet.filter((a) => a.level === level);
-  const recent = atLevel.slice(-rules.windowAll);
-  if (recent.length < rules.windowAll) return false;
-  const acc = recent.filter((a) => a.correct).length / recent.length;
-  if (acc < rules.minAccAll) return false;
 
-  const newest = charStats(atLevel, active[active.length - 1], rules.windowChar);
-  if (newest.total < rules.minTriesNewest || newest.acc < rules.minAccNewest) return false;
-
-  return active.every((c) => {
-    const s = charStats(inSet, c, rules.windowChar);
-    return s.tries >= rules.minTriesChar && s.acc >= rules.minAccChar &&
-      s.medianRt != null && s.medianRt <= rules.targetRtMs;
+  const count = (have, need) => ({
+    kind: "count", have, need, ok: have >= need, progress: Math.min(1, have / need),
   });
+  const accuracy = (correct, tries, need) => {
+    const acc = tries ? correct / tries : null;
+    return {
+      kind: "accuracy", correct, tries, have: acc, need,
+      ok: acc != null && acc >= need,
+      progress: acc == null ? 0 : clamp((acc - rules.accFloor) / (need - rules.accFloor), 0, 1),
+    };
+  };
+  const speed = (rt) => ({
+    kind: "speed", have: rt, need: rules.targetRtMs,
+    ok: rt != null && rt <= rules.targetRtMs, progress: speedFraction(rt, rules),
+  });
+  const row = (kind, char, parts) => {
+    const ok = parts.every((p) => p.ok);
+    return { kind, char, parts, ok, progress: ok ? 1 : Math.min(...parts.map((p) => p.progress)) };
+  };
+
+  const recent = atLevel.slice(-rules.windowAll);
+  const n = charStats(atLevel, newest, rules.windowChar);
+  const rows = [
+    row("overall", null, [
+      count(recent.length, rules.windowAll),
+      accuracy(recent.filter((a) => a.correct).length, recent.length, rules.minAccAll),
+    ]),
+    row("newest", newest, [count(n.total, rules.minTriesNewest), accuracy(n.correct, n.tries, rules.minAccNewest)]),
+    ...active.map((c) => {
+      const s = charStats(inSet, c, rules.windowChar);
+      return row("char", c, [
+        count(s.tries, rules.minTriesChar), accuracy(s.correct, s.tries, rules.minAccChar), speed(s.medianRt),
+      ]);
+    }),
+  ];
+  return {
+    char: KOCH_ORDER[level],
+    rows,
+    ready: rows.every((r) => r.ok),
+    progress: rows.reduce((sum, r) => sum + r.progress, 0) / rows.length,
+  };
+}
+
+/** True when the history shows the current set is solid enough to add a character. */
+export function shouldUnlock(attempts, level, rules = RULES) {
+  return unlockProgress(attempts, level, rules)?.ready ?? false;
 }
 
 /** Reaction time at or above which the speed fraction is 0. */
