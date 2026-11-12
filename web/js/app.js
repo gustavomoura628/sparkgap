@@ -11,7 +11,7 @@ import { APP_VERSION } from "./version.js";
 
 const DEFAULTS = Object.freeze({
   wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15, music: false,
-  palette: "traffic",
+  palette: "traffic", showText: true,
 });
 const LIMITS = {
   wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], dailyGoalMin: [1, 240],
@@ -42,6 +42,8 @@ const ui = {
   lessonFill: $("lesson-fill"),
   music: $("music"),
   strip: $("strip"),
+  stripTip: $("strip-tip"),
+  textToggle: $("text-toggle"),
   lampLegend: $("lamp-legend"),
   gate: $("gate"),
 };
@@ -73,6 +75,8 @@ let idleFrom = 0;   // performance.now() the idle timer counts from
 let skipped = null; // character dropped by the idle stop; the next prompt avoids it
 let introInfo = null; // { char, since, plays } for the character being introduced
 let gate = null; // progress towards unlocking the next character (trainer.unlockProgress)
+let stripItems = []; // the answers shown in the strip, in cell order
+let tipCell = null;  // the strip cell whose details are showing
 
 const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs });
 
@@ -105,7 +109,13 @@ function takeActiveMs() {
 
 // Rendering ---------------------------------------------------------------
 
-function setStage(status, glyph = "", glyphClass = "", detail = "") {
+/**
+ * Update the stage. While a character is being answered (`drill`), only the
+ * character itself changes: the status line stays empty, and the detail line
+ * is hidden when the text is switched off.
+ */
+function setStage(status, glyph = "", glyphClass = "", detail = "", { drill = false } = {}) {
+  ui.stage.classList.toggle("drilling", drill);
   ui.status.textContent = status;
   ui.status.className = `status ${glyphClass}`.trim();
   ui.glyph.textContent = glyph;
@@ -353,12 +363,58 @@ function renderStrip() {
     const cell = cells[i];
     cell.textContent = a ? a.char : "";
     cell.className = a ? (a.correct ? "cell hit" : "cell miss") : i === waiting ? "cell masked" : "cell";
-    if (a && !a.correct) cell.title = `${a.char}, typed ${a.answer}`;
-    else cell.removeAttribute("title");
   }
+  stripItems = items;
+  if (!ui.stripTip.hidden && tipCell) showStripTip(tipCell);
   const misses = items.filter((a) => !a.correct).length;
   ui.strip.setAttribute("aria-label",
     `This lesson: ${items.length} of ${S.LESSON_SIZE} answered, ${misses} missed`);
+}
+
+/** One answer, as shown when pointing at its cell: "S, you typed K, 1.21 s, 1 replay". */
+function describeAnswer(a) {
+  const rt = !Number.isFinite(a.rtMs) ? "no time"
+    : a.rtMs < 0 ? "before it finished"
+    : a.rtMs < 1000 ? `${Math.round(a.rtMs)} ms` : seconds(a.rtMs);
+  const parts = [a.char];
+  if (!a.correct) parts.push(`you typed ${a.answer}`);
+  parts.push(rt);
+  if (a.replays) parts.push(`${a.replays} ${a.replays === 1 ? "replay" : "replays"}`);
+  return parts.join(", ");
+}
+
+function showStripTip(cell) {
+  const a = stripItems[[...ui.strip.children].indexOf(cell)];
+  if (!a) return hideStripTip();
+  tipCell = cell;
+  ui.stripTip.textContent = describeAnswer(a);
+  ui.stripTip.classList.toggle("miss", !a.correct);
+  ui.stripTip.hidden = false;
+  const box = ui.stripTip.offsetParent;
+  const width = ui.stripTip.offsetWidth;
+  const left = cell.offsetLeft + cell.offsetWidth / 2 - width / 2;
+  ui.stripTip.style.left = `${Math.max(0, Math.min(left, box.clientWidth - width))}px`;
+  ui.stripTip.style.top = `${cell.offsetTop + cell.offsetHeight + 6}px`;
+}
+
+function hideStripTip() {
+  ui.stripTip.hidden = true;
+  tipCell = null;
+}
+
+/** Show or hide the text under the character while answering; saved like music. */
+function toggleText() {
+  settings = { ...settings, showText: !settings.showText };
+  logEvent("settings", { changes: { showText: settings.showText } });
+  renderTextToggle();
+  store.updateSettings({ showText: settings.showText }).catch(() => {});
+  ui.textToggle.blur(); // keep answer keys away from the button
+}
+
+function renderTextToggle() {
+  ui.stage.classList.toggle("quiet", !settings.showText);
+  ui.textToggle.textContent = settings.showText ? "Hide text" : "Show text";
+  ui.textToggle.setAttribute("aria-pressed", String(!settings.showText));
 }
 
 /** Record whether music is playing; saved with every answer from now on. */
@@ -457,7 +513,7 @@ function prompt() {
     char: ch, prob: pick.prob, endsAt: 0, firstEndsAt: 0, replays: 0, replayAt: [], answered: false,
     blurred: document.hidden || !document.hasFocus(),
   };
-  setStage("Type what you hear");
+  setStage("", "", "", "", { drill: true });
   const tone = play(ch);
   current.endsAt = current.firstEndsAt = tone.endsAt;
   current.latencyMs = tone.latencyMs;
@@ -537,14 +593,14 @@ async function answer(ch, at = performance.now()) {
   renderStrip();
 
   if (correct) {
-    setStage("Correct", current.char, "hit", rtMs < 0 ? "Before it finished" : seconds(rtMs));
+    setStage("", current.char, "hit", rtMs < 0 ? "Before it finished" : seconds(rtMs), { drill: true });
     await sleep(HIT_PAUSE_MS);
   } else {
     const you = document.createElement("span");
     you.className = "miss";
     you.textContent = `you typed ${ch}`;
-    setStage("Missed", current.char, "miss",
-      [`It was ${current.char}, `, you, `. Type ${current.char} to continue.`]);
+    setStage("", current.char, "miss",
+      [`It was ${current.char}, `, you, `. Type ${current.char} to continue.`], { drill: true });
     // Wait for the correct key before moving on; only the first answer is recorded.
     // How the correction goes is logged as an event.
     current.correction = { since: at, wrong: [], replays: 0 };
@@ -632,7 +688,7 @@ async function resume() {
   }
   if (current && !current.answered) {
     state = "listening";
-    setStage("Type what you hear");
+    setStage("", "", "", "", { drill: true });
     current.endsAt = play(current.char).endsAt;
     armIdle(current.endsAt);
     return;
@@ -749,6 +805,7 @@ async function boot() {
   }
 
   renderReadout();
+  renderTextToggle();
   renderLamps();
   renderSession();
   renderProgress();
@@ -789,7 +846,14 @@ async function boot() {
   // On touch screens the panel opens with a tap and closes with a tap elsewhere.
   document.addEventListener("pointerdown", (e) => {
     if (!e.target.closest?.('.lamp[data-state="next"]')) hideGate();
+    if (!e.target.closest?.(".cell")) hideStripTip();
   });
+  ui.strip.addEventListener("pointerover", (e) => {
+    const cell = e.target.closest(".cell");
+    if (cell) showStripTip(cell);
+  });
+  ui.strip.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && hideStripTip());
+  ui.textToggle.addEventListener("click", toggleText);
   $("open-settings").addEventListener("click", () => {
     if (state === "idle") {
       resumeTo = "idle";

@@ -167,6 +167,22 @@ main {
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--miss) 55%, transparent);
 }
 .cell.masked { background: var(--enamel); box-shadow: inset 0 0 0 2px var(--amber); }
+.strip-wrap { position: relative; }
+.strip-tip {
+  position: absolute;
+  z-index: 5;
+  width: max-content;
+  padding: 0.25rem 0.55rem;
+  background: var(--enamel);
+  border: 1px solid var(--plate-edge);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.45);
+  font-size: var(--step--1);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.strip-tip.miss { border-color: color-mix(in oklab, var(--miss) 55%, var(--plate-edge)); }
+.strip-tip[hidden] { display: none; }
 
 .stage {
   flex: 1;
@@ -192,9 +208,10 @@ main {
   line-height: 1;
   height: 1em;
   margin: 0.5rem 0 0.75rem;
-  transition: color 120ms ease-out;
 }
+/* Colours apply from the first frame: no transition, so a hit never flashes white. */
 .glyph.hit { color: var(--hit); }
+.glyph.miss { color: var(--miss); }
 .status.miss { color: var(--miss); }
 .glyph.intro { color: var(--amber); }
 
@@ -211,6 +228,20 @@ main {
   font-size: var(--step--1);
 }
 .keys .sep { display: inline-block; width: 1.25rem; }
+.text-toggle {
+  margin-left: 1.25rem;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--plate-edge);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--bone-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.text-toggle:hover { color: var(--bone); border-color: var(--bone-dim); }
+/* "Hide text": while answering, nothing under the character changes. The space is kept so nothing moves. */
+.stage.quiet .hints,
+.stage.quiet.drilling .detail { visibility: hidden; }
 
 /* Lamp plate: progress through the Koch order ---------------------------- */
 
@@ -580,8 +611,4 @@ main.page { gap: 1.25rem; padding-top: 0.5rem; }
   .tiles, .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bar { flex-wrap: wrap; gap: 0.5rem 1rem; }
   .keys .sep { display: block; height: 0.4rem; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .glyph { transition: none; }
 }

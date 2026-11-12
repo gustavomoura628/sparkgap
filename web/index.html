@@ -43,13 +43,19 @@
       </div>
     </section>
 
-    <div class="strip" id="strip" role="img"></div>
+    <div class="strip-wrap">
+      <div class="strip" id="strip" role="img"></div>
+      <div class="strip-tip" id="strip-tip" role="tooltip" hidden></div>
+    </div>
 
     <section class="stage" id="stage" aria-live="polite">
       <p class="status" id="status">Press any key or click here to start</p>
       <div class="glyph" id="glyph" aria-hidden="true"></div>
       <p class="detail" id="detail">Characters play at full speed. Type each one as soon as you recognise it.</p>
-      <p class="keys"><kbd>Space</kbd> plays it again <span class="sep"></span> <kbd>Esc</kbd> pauses</p>
+      <p class="keys">
+        <span class="hints"><kbd>Space</kbd> plays it again <span class="sep"></span> <kbd>Esc</kbd> pauses</span>
+        <button type="button" class="text-toggle" id="text-toggle" aria-controls="detail">Hide text</button>
+      </p>
     </section>
 
     <section class="plate lamp-plate" aria-labelledby="plate-title">

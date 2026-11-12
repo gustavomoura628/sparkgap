@@ -58,7 +58,14 @@ character, so the dropped one cannot be remembered and answered late.
 
 Above the prompt, a strip of 50 cells tracks the current lesson. The character being played is a
 masked cell, so it cannot be read before it is heard; answered characters are revealed, and misses are
-marked in red (hover one to see what was typed).
+marked in red. Pointing at a cell (or tapping it) shows the reaction time, what was typed on a miss,
+and how many times the character was replayed.
+
+While a character is being answered, only the character itself changes on screen: it appears in green
+when correct, or in red (the character that was sent) when missed. The line under it gives the reaction
+time or, after a miss, what was typed. **Hide text** next to the key hints removes that line and the
+hints during the drill, so nothing but the character changes; the choice is remembered. Messages outside
+the drill (starting, a new character, an idle stop) always show.
 
 The practice screen also shows, for the last complete lesson:
 
@@ -90,7 +97,7 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.7.0","session":"m3x9k2ab4f","pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.8.0","session":"m3x9k2ab4f","pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |
