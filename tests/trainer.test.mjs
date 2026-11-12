@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   RULES, currentLevel, mastery, charStats, pickNext, pickNextWithProb, shouldUnlock, weights, speedFraction,
-  slowBound, unlockProgress,
+  slowBound, unlockProgress, focusOf,
 } from "../web/js/trainer.js";
 
 const attempt = (char, correct, rtMs = 400, level = 2) => ({ char, answer: correct ? char : "?", correct, rtMs, level });
@@ -125,4 +125,62 @@ test("unlock progress counts accuracy from the floor and takes each row's weakes
 
 test("unlock progress returns null when everything is unlocked", () => {
   assert.equal(unlockProgress([], 41), null);
+});
+
+// Six characters with 20 tries each; `misses` maps a sent character to the keys typed instead.
+function level6(misses = {}) {
+  const out = [];
+  for (const c of ["K", "M", "U", "R", "E", "S"]) {
+    const wrong = misses[c] ?? [];
+    for (let i = 0; i < 20; i++) {
+      const typed = wrong[i];
+      out.push({ ...attempt(c, !typed, 450, 6), answer: typed ?? c });
+    }
+  }
+  return out;
+}
+
+test("the focus is the character furthest from passing, with its confusions in both directions", () => {
+  const h = level6({ R: ["K", "K", "K", "K", "K", "U", "U"], K: ["R", "R"], S: ["U"] });
+  const f = focusOf(h, 6);
+  assert.equal(f.char, "R");
+  assert.deepEqual(f.partners, [{ char: "K", count: 7 }, { char: "U", count: 2 }]);
+});
+
+test("the main confuser is raised to the focus weight, and the others in proportion", () => {
+  const h = level6({ R: ["K", "K", "K", "K", "U", "U"], K: [] });
+  const w = Object.fromEntries(weights(h, 6).map((p) => [p.char, p.weight]));
+  assert.ok(Math.abs(w.R - w.K) < 1e-9);
+  assert.ok(w.U > w.M && w.U < w.K);
+  assert.ok(w.R > w.S);
+});
+
+test("confusions with characters that are not unlocked are ignored", () => {
+  const h = level6({ R: ["D", "D", "D", "D", "D", "D", "K"] });
+  assert.deepEqual(focusOf(h, 6).partners, [{ char: "K", count: 1 }]);
+});
+
+test("no character goes over the share cap", () => {
+  const h = level6({ R: Array(20).fill("K"), K: Array(20).fill("R") });
+  const w = weights(h, 6);
+  const total = w.reduce((s, p) => s + p.weight, 0);
+  for (const p of w) assert.ok(p.weight / total <= RULES.maxShare / 6 + 1e-9, `${p.char} ${p.weight / total}`);
+});
+
+test("the focus stays put on a near tie", () => {
+  // R and S are equally far behind; S was the focus on the last answer.
+  const h = level6({ R: ["K", "K", "K", "K", "K"], S: ["U", "U", "U", "U", "U"] });
+  assert.equal(focusOf(h, 6).char, "R");
+  h[h.length - 1] = { ...h[h.length - 1], focus: "S" };
+  assert.equal(focusOf(h, 6).char, "S");
+});
+
+test("the pick reports the focus it was made with", () => {
+  const h = level6({ R: ["K", "K", "K", "K", "K"] });
+  assert.equal(pickNextWithProb(h, 6, { rng: () => 0.5 }).focus, "R");
+});
+
+test("there is no focus when every character passes", () => {
+  const h = level6().map((a) => ({ ...a, rtMs: 300 }));
+  assert.equal(focusOf(h, 6), null);
 });

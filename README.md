@@ -34,8 +34,15 @@ The app opens at <http://127.0.0.1:8073/>. Press any key to start.
   the mean of the rows. Full blue is kept for the moment every check passes.
 - **Sound first.** The app never shows dot-dash patterns. Each new character is introduced by playing it
   a few times, so you learn its sound instead of a chart you decode in your head.
-- **Adaptive practice.** Characters you miss or answer slowly come up more often. The newest character
-  gets extra practice for its first 25 tries. The same character never plays three times in a row.
+- **Adaptive practice.** Characters you miss or answer slowly (against the target) come up more often.
+  The newest character gets extra practice for its first 25 tries. The same character never plays three
+  times in a row, and no character is picked more than 2.5 times as often as an even share.
+- **Focus and confusions.** The character furthest from passing its unlock check is the focus and comes
+  up more often. The characters it is confused with (in either direction, over the last 300 answers) are
+  raised with it: the most confused one to the same weight as the focus, the others in proportion. With
+  both equally likely, guessing the focus does not pay; telling them apart does. The focus only moves when
+  another character is clearly further behind. The characters panel names the focus and rings its lamp;
+  **Hide focus** removes both (the selection itself does not change).
 - **Reaction time.** Every answer records the time from the end of the first play of the character to the
   key press, so replaying it with `Space` does not restart the clock.
   Accuracy shows whether you know a character; reaction time shows whether you recognise it instantly.
@@ -97,7 +104,7 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.8.0","session":"m3x9k2ab4f","pickProb":0.4821,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.9.0","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |
@@ -107,6 +114,7 @@ With the server running, history is appended to `data/attempts.jsonl`, one JSON 
 | `lesson`, `durMs` | Lesson number and active practice time credited to the answer |
 | `charMs`, `copyWpm` | How long the character played, and the resulting copy speed |
 | `pickProb` | Probability the trainer had of choosing this character, for correcting the adaptive selection in analysis |
+| `focus`, `focusShown` | The focus character when this one was picked (or `null`), and whether the focus was displayed |
 | `blurred` | The page lost focus or was hidden while the character was waiting for an answer |
 | `latencyMs` | Audio output latency added to the end-of-tone time |
 | `app`, `session` | App version and page-load identifier |

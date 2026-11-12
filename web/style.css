@@ -230,6 +230,7 @@ main {
 .keys .sep { display: inline-block; width: 1.25rem; }
 .text-toggle {
   margin-left: 1.25rem;
+  white-space: nowrap;
   padding: 0.1rem 0.55rem;
   border: 1px solid var(--plate-edge);
   border-radius: 4px;
@@ -261,6 +262,7 @@ main {
   margin-bottom: 0.9rem;
 }
 .plate-head h2 { font-size: var(--step-1); font-weight: 600; }
+.plate-head { flex-wrap: wrap; }
 .plate-head p { color: var(--bone-dim); }
 
 .lamps {
@@ -339,6 +341,9 @@ main {
 .gate tr.blocked .state { color: var(--miss); }
 
 .lamp[data-newest] { outline: 1px solid var(--amber); outline-offset: 3px; }
+.lamp[data-focus] { outline: 2px dashed var(--bone); outline-offset: 3px; }
+.focus-line { flex: 1; text-align: right; }
+.focus-line .text-toggle { margin-left: 0.75rem; font-size: var(--step--1); }
 .lamp:focus-visible { outline: 2px solid var(--bone); outline-offset: 3px; }
 
 .legend {
@@ -611,4 +616,5 @@ main.page { gap: 1.25rem; padding-top: 0.5rem; }
   .tiles, .tiles.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bar { flex-wrap: wrap; gap: 0.5rem 1rem; }
   .keys .sep { display: block; height: 0.4rem; }
+  .focus-line { order: 3; flex-basis: 100%; text-align: left; }
 }

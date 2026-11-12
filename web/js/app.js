@@ -11,7 +11,7 @@ import { APP_VERSION } from "./version.js";
 
 const DEFAULTS = Object.freeze({
   wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15, music: false,
-  palette: "traffic", showText: true,
+  palette: "traffic", showText: true, showFocus: true,
 });
 const LIMITS = {
   wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], dailyGoalMin: [1, 240],
@@ -44,6 +44,8 @@ const ui = {
   strip: $("strip"),
   stripTip: $("strip-tip"),
   textToggle: $("text-toggle"),
+  focusText: $("focus-text"),
+  focusToggle: $("focus-toggle"),
   lampLegend: $("lamp-legend"),
   gate: $("gate"),
 };
@@ -152,6 +154,9 @@ function renderLamps() {
   const newest = KOCH_ORDER[level - 1];
   const scale = goodScale(settings.palette);
   gate = T.unlockProgress(attempts, level, rules());
+  const focus = settings.showFocus ? T.focusOf(attempts, level, rules()) : null;
+  const shownFocus = focus?.char;
+  renderFocus(focus);
   ui.lampLegend.textContent = (settings.palette === "amber"
     ? "A lamp burns brighter as a character gets faster and more accurate."
     : "A lamp goes from red to green as a character gets faster and more accurate.") +
@@ -183,6 +188,7 @@ function renderLamps() {
     b.dataset.state = "active";
     lightLamp(b, m, scale);
     b.toggleAttribute("data-newest", ch === newest);
+    b.toggleAttribute("data-focus", ch === shownFocus);
     const desc = s.tries
       ? `${Math.round(s.acc * 100)}% of the last ${s.tries}` +
         (s.medianRt != null ? `, median ${seconds(Math.max(0, s.medianRt))}` : "")
@@ -402,6 +408,32 @@ function hideStripTip() {
   tipCell = null;
 }
 
+/** The focus line on the characters panel; empty when focus details are hidden. */
+function renderFocus(focus) {
+  ui.focusToggle.textContent = settings.showFocus ? "Hide focus" : "Show focus";
+  ui.focusToggle.setAttribute("aria-pressed", String(!settings.showFocus));
+  if (!settings.showFocus) {
+    ui.focusText.textContent = "";
+    return;
+  }
+  if (!focus) {
+    ui.focusText.textContent = "No focus: every character passes";
+    return;
+  }
+  const partners = focus.partners.slice(0, 2).map((p) => p.char);
+  ui.focusText.textContent = `Focus: ${focus.char}` +
+    (partners.length ? `, paired with ${partners.join(" and ")}` : "");
+}
+
+/** Show or hide which character is in focus; saved like music. The selection itself is unchanged. */
+function toggleFocus() {
+  settings = { ...settings, showFocus: !settings.showFocus };
+  logEvent("settings", { changes: { showFocus: settings.showFocus } });
+  renderLamps();
+  store.updateSettings({ showFocus: settings.showFocus }).catch(() => {});
+  ui.focusToggle.blur(); // keep answer keys away from the button
+}
+
 /** Show or hide the text under the character while answering; saved like music. */
 function toggleText() {
   settings = { ...settings, showText: !settings.showText };
@@ -510,7 +542,7 @@ function prompt() {
   skipped = null;
   const ch = pick.char;
   current = {
-    char: ch, prob: pick.prob, endsAt: 0, firstEndsAt: 0, replays: 0, replayAt: [], answered: false,
+    char: ch, prob: pick.prob, focus: pick.focus, endsAt: 0, firstEndsAt: 0, replays: 0, replayAt: [], answered: false,
     blurred: document.hidden || !document.hasFocus(),
   };
   setStage("", "", "", "", { drill: true });
@@ -570,6 +602,8 @@ async function answer(ch, at = performance.now()) {
     session: SESSION,
     ...(current.replays ? { rtLastMs: Math.round(at - current.endsAt), replayAtMs: current.replayAt } : {}),
     pickProb: Math.round(current.prob * 10_000) / 10_000,
+    focus: current.focus,
+    focusShown: settings.showFocus,
     targetRtMs: settings.targetRtMs,
     volume: settings.volume,
     blurred: current.blurred,
@@ -854,6 +888,7 @@ async function boot() {
   });
   ui.strip.addEventListener("pointerleave", (e) => e.pointerType !== "touch" && hideStripTip());
   ui.textToggle.addEventListener("click", toggleText);
+  ui.focusToggle.addEventListener("click", toggleFocus);
   $("open-settings").addEventListener("click", () => {
     if (state === "idle") {
       resumeTo = "idle";

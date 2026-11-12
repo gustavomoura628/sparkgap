@@ -18,9 +18,12 @@ export const RULES = Object.freeze({
   minTriesNewest: 25, // the newest character needs this many tries since it was added...
   minAccNewest: 0.9,  // ...and this accuracy over its last windowChar tries
   targetRtMs: 500,    // every active character's median reaction time must reach this
-  fastMs: 300,        // reaction times at or below this count as instant
   slowMs: 1500,       // reaction times at or above this count as slow
   newCharBoost: 25,   // the newest character is favoured for its first N tries
+  focusBoost: 1,      // extra weight for the focus character, in average weights
+  focusStickiness: 0.1, // the focus moves only when another character is this much further behind
+  confusionWindow: 300, // recent answers used to find what the focus is confused with
+  maxShare: 2.5,      // no character is picked more than this times an even share
   accFloor: 0.5,      // unlock progress counts accuracy from here (at or below = no progress)
 });
 
@@ -145,20 +148,99 @@ export function mastery(stats, rules = RULES) {
   return stats.acc * speedFraction(stats.medianRt, rules) * confidence;
 }
 
-/** Sampling weight per active character: weak and slow characters come up more often. */
+/**
+ * The focus: the active character furthest from passing its unlock check
+ * (keeping the previous focus on near ties), and
+ * the characters it is most often confused with (in either direction, over the
+ * last `confusionWindow` answers). Returns null when there is nothing to focus
+ * on (every character passes, or every character is unlocked).
+ */
+export function focusOf(attempts, level, rules = RULES) {
+  const gate = unlockProgress(attempts, level, rules);
+  if (!gate) return null;
+  const rows = gate.rows.filter((r) => r.kind === "char" && !r.ok);
+  if (!rows.length) return null;
+  // Lowest progress first; ties go to the lower accuracy, then to the Koch order.
+  const acc = (r) => r.parts.find((p) => p.kind === "accuracy").have ?? 0;
+  const weakest = rows.reduce((a, b) =>
+    b.progress < a.progress - 1e-9 || (Math.abs(b.progress - a.progress) <= 1e-9 && acc(b) < acc(a)) ? b : a);
+  // Keep the previous focus (stored on the last answer) unless another character
+  // is clearly further behind, so the focus does not flip back and forth on near ties.
+  const prev = rows.find((r) => r.char === attempts[attempts.length - 1]?.focus);
+  const focus = prev && prev.progress <= weakest.progress + rules.focusStickiness ? prev.char : weakest.char;
+
+  const active = new Set(activeChars(level));
+  const counts = new Map();
+  for (const a of attempts.slice(-rules.confusionWindow)) {
+    if (a.correct || !active.has(a.char) || !active.has(a.answer)) continue;
+    const other = a.char === focus ? a.answer : a.answer === focus ? a.char : null;
+    if (other && other !== focus) counts.set(other, (counts.get(other) ?? 0) + 1);
+  }
+  const partners = [...counts]
+    .map(([char, count]) => ({ char, count }))
+    .sort((a, b) => b.count - a.count || activeChars(level).indexOf(a.char) - activeChars(level).indexOf(b.char));
+  return { char: focus, partners };
+}
+
+/** Limit every weight to `maxShare` times an even share of the total. */
+function capWeights(list, maxShare) {
+  const out = list.map((p) => ({ ...p }));
+  if (out.length < 2) return out;
+  for (let i = 0; i < 10; i++) {
+    const total = out.reduce((s, p) => s + p.weight, 0);
+    const limit = (maxShare / out.length) * total;
+    const over = out.filter((p) => p.weight > limit + 1e-9);
+    if (!over.length) break;
+    // Solve for the limit after capping: capped weights equal L = share * (rest + k*L).
+    const rest = out.filter((p) => p.weight <= limit + 1e-9).reduce((s, p) => s + p.weight, 0);
+    const share = maxShare / out.length;
+    const L = (share * rest) / (1 - share * over.length);
+    if (!(L > 0)) break;
+    for (const p of over) p.weight = L;
+  }
+  return out;
+}
+
+/**
+ * Sampling weight per active character.
+ *
+ * Each character starts from its recent accuracy and its speed against the
+ * target. The focus character (see focusOf) then gets one average weight
+ * extra, and the characters it is confused with are raised towards the focus
+ * weight in proportion to how often they were confused: the most confused one
+ * matches it. With the two equally likely, guessing the focus character no
+ * longer pays; telling them apart does. No character may exceed `maxShare`
+ * times an even share.
+ */
 export function weights(attempts, level, rules = RULES) {
+  return selection(attempts, level, rules).weights;
+}
+
+/** The sampling weights together with the focus they were built around. */
+export function selection(attempts, level, rules = RULES) {
   const active = activeChars(level);
   const newest = active[active.length - 1];
-  return active.map((c) => {
+  const base = active.map((c) => {
     const s = charStats(attempts, c, rules.windowChar);
     const acc = (s.correct + 1) / (s.tries + 2); // Laplace prior: unknown = 50%
-    const slow = s.medianRt == null
-      ? 0.5
-      : clamp((s.medianRt - rules.fastMs) / (rules.slowMs - rules.fastMs), 0, 1);
-    let w = 1 + 4 * (1 - acc) + 1.5 * slow;
+    const slow = s.medianRt == null ? 0.5 : 1 - speedFraction(s.medianRt, rules);
+    let w = 1 + 6 * (1 - acc) + 2 * slow;
     if (c === newest && s.total < rules.newCharBoost && level > rules.startLevel) w += 2;
     return { char: c, weight: w };
   });
+
+  const focus = focusOf(attempts, level, rules);
+  if (focus) {
+    const mean = base.reduce((s, p) => s + p.weight, 0) / base.length;
+    const f = base.find((p) => p.char === focus.char);
+    f.weight += rules.focusBoost * mean;
+    const top = focus.partners[0]?.count ?? 0;
+    for (const { char, count } of focus.partners) {
+      const p = base.find((x) => x.char === char);
+      if (p.weight < f.weight) p.weight += (f.weight - p.weight) * (count / top);
+    }
+  }
+  return { weights: capWeights(base, rules.maxShare), focus };
 }
 
 /**
@@ -168,7 +250,8 @@ export function weights(attempts, level, rules = RULES) {
  * `rng` returns a float in [0, 1).
  */
 export function pickNextWithProb(attempts, level, { rng = Math.random, rules = RULES, exclude = null } = {}) {
-  let pool = weights(attempts, level, rules);
+  const sel = selection(attempts, level, rules);
+  let pool = sel.weights;
   const last2 = attempts.slice(-2).map((a) => a.char);
   const drop = (ch) => {
     if (ch != null && pool.length > 1 && pool.some((p) => p.char === ch)) pool = pool.filter((p) => p.char !== ch);
@@ -185,7 +268,7 @@ export function pickNextWithProb(attempts, level, { rng = Math.random, rules = R
       break;
     }
   }
-  return { char: pick.char, prob: pick.weight / total };
+  return { char: pick.char, prob: pick.weight / total, focus: sel.focus?.char ?? null };
 }
 
 /** Pick the next character (see pickNextWithProb). */
