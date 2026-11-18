@@ -90,10 +90,13 @@ test("speed fraction runs linearly from the slow bound to the target", () => {
   assert.equal(slowBound({ ...RULES, targetRtMs: 1400 }), 1900);
 });
 
-test("unlocking also needs every character at the target reaction time", () => {
-  const slow = Array.from({ length: RULES.windowAll }, (_, i) => attempt(i % 2 ? "K" : "M", true, 800, 2));
-  assert.equal(shouldUnlock(slow, 2), false);
-  assert.equal(shouldUnlock(slow, 2, { ...RULES, targetRtMs: 900 }), true);
+test("unlocking needs every character under the unlock ceiling, not the target", () => {
+  const at = (rt) => Array.from({ length: RULES.windowAll }, (_, i) => attempt(i % 2 ? "K" : "M", true, rt, 2));
+  assert.equal(shouldUnlock(at(RULES.unlockRtMs), 2), true);     // slower than the target, but fluent
+  assert.equal(shouldUnlock(at(RULES.unlockRtMs + 50), 2), false);
+  assert.equal(shouldUnlock(at(RULES.unlockRtMs + 50), 2, { ...RULES, unlockRtMs: 900 }), true);
+  // A target above the ceiling raises the ceiling with it.
+  assert.equal(shouldUnlock(at(RULES.unlockRtMs + 50), 2, { ...RULES, targetRtMs: 900 }), true);
 });
 
 test("unlock progress agrees with the unlock check and stays in range", () => {

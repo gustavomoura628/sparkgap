@@ -17,7 +17,8 @@ export const RULES = Object.freeze({
   minAccChar: 0.8,    // ...at this accuracy before unlocking
   minTriesNewest: 25, // the newest character needs this many tries since it was added...
   minAccNewest: 0.9,  // ...and this accuracy over its last windowChar tries
-  targetRtMs: 500,    // every active character's median reaction time must reach this
+  targetRtMs: 500,    // the reaction time to aim for (lamps, mastery, selection weights)
+  unlockRtMs: 800,    // unlocking needs every active character's median at or under this (or the target, if higher)
   slowMs: 1500,       // reaction times at or above this count as slow
   newCharBoost: 25,   // the newest character is favoured for its first N tries
   focusBoost: 1,      // extra weight for the focus character, in average weights
@@ -94,9 +95,13 @@ export function unlockProgress(attempts, level, rules = RULES) {
       progress: acc == null ? 0 : clamp((acc - rules.accFloor) / (need - rules.accFloor), 0, 1),
     };
   };
+  // Unlocking only asks for fluent recognition (not decoding); the faster target stays the goal elsewhere.
+  const ceiling = unlockCeiling(rules);
+  const slow = Math.max(slowBound(rules), ceiling + 500);
   const speed = (rt) => ({
-    kind: "speed", have: rt, need: rules.targetRtMs,
-    ok: rt != null && rt <= rules.targetRtMs, progress: speedFraction(rt, rules),
+    kind: "speed", have: rt, need: ceiling,
+    ok: rt != null && rt <= ceiling,
+    progress: rt == null ? 0 : clamp((slow - rt) / (slow - ceiling), 0, 1),
   });
   const row = (kind, char, parts) => {
     const ok = parts.every((p) => p.ok);
@@ -130,6 +135,9 @@ export function unlockProgress(attempts, level, rules = RULES) {
 export function shouldUnlock(attempts, level, rules = RULES) {
   return unlockProgress(attempts, level, rules)?.ready ?? false;
 }
+
+/** The median reaction time every character needs before the next one unlocks. */
+export const unlockCeiling = (rules = RULES) => Math.max(rules.unlockRtMs, rules.targetRtMs);
 
 /** Reaction time at or above which the speed fraction is 0. */
 export const slowBound = (rules = RULES) => Math.max(rules.slowMs, rules.targetRtMs + 500);

@@ -10,11 +10,12 @@ import { goodScale, lightLamp } from "./charts.js";
 import { APP_VERSION } from "./version.js";
 
 const DEFAULTS = Object.freeze({
-  wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, dailyGoalMin: 15, music: false,
+  wpm: 20, frequency: 600, volume: 0.5, targetRtMs: 500, unlockRtMs: 800, dailyGoalMin: 15, music: false,
   palette: "traffic", showText: true, showFocus: true,
 });
 const LIMITS = {
-  wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], dailyGoalMin: [1, 240],
+  wpm: [5, 50], frequency: [300, 1200], volume: [0.05, 1], targetRtMs: [150, 2000], unlockRtMs: [150, 3000],
+  dailyGoalMin: [1, 240],
 };
 const HIT_PAUSE_MS = 450;
 const IDLE_MS = 5000; // no key this long after a character ends: drop it and stop the drill
@@ -80,7 +81,7 @@ let gate = null; // progress towards unlocking the next character (trainer.unloc
 let stripItems = []; // the answers shown in the strip, in cell order
 let tipCell = null;  // the strip cell whose details are showing
 
-const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs });
+const rules = () => ({ ...T.RULES, targetRtMs: settings.targetRtMs, unlockRtMs: settings.unlockRtMs });
 
 /** Append to the event log (sessions, pauses, unlocks...). `onExit` uses a request that survives page close. */
 function logEvent(type, data = {}, onExit = false) {
@@ -606,6 +607,7 @@ async function answer(ch, at = performance.now()) {
     focus: current.focus,
     focusShown: settings.showFocus,
     targetRtMs: settings.targetRtMs,
+    unlockRtMs: settings.unlockRtMs,
     volume: settings.volume,
     blurred: current.blurred,
     tzOffsetMin: -new Date().getTimezoneOffset(),
