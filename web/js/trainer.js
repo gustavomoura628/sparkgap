@@ -150,10 +150,11 @@ export function mastery(stats, rules = RULES) {
 
 /**
  * The focus: the active character furthest from passing its unlock check
- * (keeping the previous focus on near ties), and
- * the characters it is most often confused with (in either direction, over the
- * last `confusionWindow` answers). Returns null when there is nothing to focus
- * on (every character passes, or every character is unlocked).
+ * (keeping the previous focus on near ties), and the characters it is confused
+ * with over the last `confusionWindow` answers. Each partner has `count` (mix-ups
+ * in either direction), `answers` (answers where either character was sent) and
+ * `rate` (count / answers). Returns null when there is nothing to focus on
+ * (every character passes, or every character is unlocked).
  */
 export function focusOf(attempts, level, rules = RULES) {
   const gate = unlockProgress(attempts, level, rules);
@@ -170,14 +171,20 @@ export function focusOf(attempts, level, rules = RULES) {
   const focus = prev && prev.progress <= weakest.progress + rules.focusStickiness ? prev.char : weakest.char;
 
   const active = new Set(activeChars(level));
+  const recent = attempts.slice(-rules.confusionWindow);
+  const sent = new Map();
   const counts = new Map();
-  for (const a of attempts.slice(-rules.confusionWindow)) {
+  for (const a of recent) {
+    sent.set(a.char, (sent.get(a.char) ?? 0) + 1);
     if (a.correct || !active.has(a.char) || !active.has(a.answer)) continue;
     const other = a.char === focus ? a.answer : a.answer === focus ? a.char : null;
     if (other && other !== focus) counts.set(other, (counts.get(other) ?? 0) + 1);
   }
   const partners = [...counts]
-    .map(([char, count]) => ({ char, count }))
+    .map(([char, count]) => {
+      const answers = (sent.get(focus) ?? 0) + (sent.get(char) ?? 0);
+      return { char, count, answers, rate: count / answers };
+    })
     .sort((a, b) => b.count - a.count || activeChars(level).indexOf(a.char) - activeChars(level).indexOf(b.char));
   return { char: focus, partners };
 }
@@ -206,10 +213,16 @@ function capWeights(list, maxShare) {
  *
  * Each character starts from its recent accuracy and its speed against the
  * target. The focus character (see focusOf) then gets one average weight
- * extra, and the characters it is confused with are raised towards the focus
- * weight in proportion to how often they were confused: the most confused one
- * matches it. With the two equally likely, guessing the focus character no
- * longer pays; telling them apart does. No character may exceed `maxShare`
+ * extra, and each character it is confused with is raised towards the focus
+ * weight by the share of their answers that are ambiguous between the two.
+ *
+ * Why: an answer is either clear or ambiguous (the listener cannot tell the
+ * pair apart and effectively picks one). Ambiguous answers come out wrong about
+ * half the time whatever the picking habit, so the ambiguous share is about
+ * twice the pair's mix-up rate. Unequal frequencies only reward a picking habit
+ * on ambiguous answers, so the gap is closed in that proportion: fully only at a
+ * 50% mix-up rate (pure guessing), barely for a pair that is rarely confused.
+ * No character may exceed `maxShare`
  * times an even share.
  */
 export function weights(attempts, level, rules = RULES) {
@@ -234,10 +247,10 @@ export function selection(attempts, level, rules = RULES) {
     const mean = base.reduce((s, p) => s + p.weight, 0) / base.length;
     const f = base.find((p) => p.char === focus.char);
     f.weight += rules.focusBoost * mean;
-    const top = focus.partners[0]?.count ?? 0;
-    for (const { char, count } of focus.partners) {
+    for (const { char, rate } of focus.partners) {
       const p = base.find((x) => x.char === char);
-      if (p.weight < f.weight) p.weight += (f.weight - p.weight) * (count / top);
+      const ambiguous = Math.min(1, 2 * rate);
+      if (p.weight < f.weight) p.weight += (f.weight - p.weight) * ambiguous;
     }
   }
   return { weights: capWeights(base, rules.maxShare), focus };

@@ -38,11 +38,15 @@ The app opens at <http://127.0.0.1:8073/>. Press any key to start.
   The newest character gets extra practice for its first 25 tries. The same character never plays three
   times in a row, and no character is picked more than 2.5 times as often as an even share.
 - **Focus and confusions.** The character furthest from passing its unlock check is the focus and comes
-  up more often. The characters it is confused with (in either direction, over the last 300 answers) are
-  raised with it: the most confused one to the same weight as the focus, the others in proportion. With
-  both equally likely, guessing the focus does not pay; telling them apart does. The focus only moves when
-  another character is clearly further behind. The characters panel names the focus and rings its lamp;
-  **Hide focus** removes both (the selection itself does not change).
+  up more often. Each character it is confused with (in either direction, over the last 300 answers) is
+  raised towards the focus by twice the pair's mix-up rate, capped at fully matching it. The reasoning:
+  an answer is either clear or ambiguous (the pair cannot be told apart, so one is picked). Ambiguous
+  answers come out wrong about half the time whatever the picking habit, so the ambiguous share is about
+  twice the mix-up rate. Unequal frequencies only reward a picking habit on ambiguous answers, so the gap
+  between the two is closed in that proportion: a pair mixed up 10% of the time closes 20% of the gap, and
+  only a pair at chance (50%) is fully matched. The focus only moves when another character is clearly
+  further behind. The characters panel names the focus, its main confusions and their mix-up rates, and
+  rings its lamp; **Hide focus** removes all of it (the selection itself does not change).
 - **Reaction time.** Every answer records the time from the end of the first play of the character to the
   key press, so replaying it with `Space` does not restart the clock.
   Accuracy shows whether you know a character; reaction time shows whether you recognise it instantly.
@@ -104,7 +108,7 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.9.0","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.10.0","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |

@@ -420,9 +420,10 @@ function renderFocus(focus) {
     ui.focusText.textContent = "No focus: every character passes";
     return;
   }
-  const partners = focus.partners.slice(0, 2).map((p) => p.char);
+  // The top confusions, with how often the pair is mixed up (that sets how much they are paired).
+  const partners = focus.partners.slice(0, 2).map((p) => `${p.char} (${Math.round(p.rate * 100)}%)`);
   ui.focusText.textContent = `Focus: ${focus.char}` +
-    (partners.length ? `, paired with ${partners.join(" and ")}` : "");
+    (partners.length ? `, mixed up with ${partners.join(" and ")}` : "");
 }
 
 /** Show or hide which character is in focus; saved like music. The selection itself is unchanged. */

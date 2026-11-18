@@ -144,20 +144,32 @@ test("the focus is the character furthest from passing, with its confusions in b
   const h = level6({ R: ["K", "K", "K", "K", "K", "U", "U"], K: ["R", "R"], S: ["U"] });
   const f = focusOf(h, 6);
   assert.equal(f.char, "R");
-  assert.deepEqual(f.partners, [{ char: "K", count: 7 }, { char: "U", count: 2 }]);
+  // Every character was sent 20 times, so each pair has 40 answers.
+  assert.deepEqual(f.partners, [
+    { char: "K", count: 7, answers: 40, rate: 7 / 40 },
+    { char: "U", count: 2, answers: 40, rate: 2 / 40 },
+  ]);
 });
 
-test("the main confuser is raised to the focus weight, and the others in proportion", () => {
-  const h = level6({ R: ["K", "K", "K", "K", "U", "U"], K: [] });
+test("a confuser closes the gap to the focus by twice the pair's mix-up rate", () => {
+  // K and M have identical records, so any difference between them comes from the pairing.
+  for (const n of [5, 8]) { // R fails its accuracy check, so it is the focus
+    const h = level6({ R: Array(n).fill("K") });
+    const w = Object.fromEntries(weights(h, 6).map((p) => [p.char, p.weight]));
+    const closed = (w.K - w.M) / (w.R - w.M);
+    assert.ok(Math.abs(closed - 2 * (n / 40)) < 1e-9, `${n}: ${closed}`);
+  }
+});
+
+test("a pair mixed up half the time is fully matched", () => {
+  const h = level6({ R: Array(10).fill("K"), K: Array(10).fill("R") }); // 20 of 40
   const w = Object.fromEntries(weights(h, 6).map((p) => [p.char, p.weight]));
   assert.ok(Math.abs(w.R - w.K) < 1e-9);
-  assert.ok(w.U > w.M && w.U < w.K);
-  assert.ok(w.R > w.S);
 });
 
 test("confusions with characters that are not unlocked are ignored", () => {
   const h = level6({ R: ["D", "D", "D", "D", "D", "D", "K"] });
-  assert.deepEqual(focusOf(h, 6).partners, [{ char: "K", count: 1 }]);
+  assert.deepEqual(focusOf(h, 6).partners.map((p) => [p.char, p.count]), [["K", 1]]);
 });
 
 test("no character goes over the share cap", () => {
