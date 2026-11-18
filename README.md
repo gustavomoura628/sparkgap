@@ -96,7 +96,7 @@ The practice screen also shows, for the last complete lesson:
 The **Profile** page has all-time and today totals, accuracy streaks (longest runs at 100%, 97% and
 95%), a lesson-by-lesson heat map per character, reaction time, accuracy and characters unlocked over
 time, a per-character reaction chart with its learning rate, per-character averages, hits and misses,
-a Morse tree shaded by speed or miss rate, a confusion matrix of wrong answers (the last 300 answers, the ones used to
+a Morse tree shaded by speed or miss rate, confusion matrices of wrong answers, by direction and folded into pairs (the last 300 answers, the ones used to
 pair confused characters, or all time; shaded by the share of the played character's answers), and a practice
 calendar.
 Every chart can be read with the keyboard (focus it, then use the arrow keys) and has a table view.

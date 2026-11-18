@@ -499,6 +499,9 @@ a.ghost { color: var(--bone); text-decoration: none; display: inline-block; }
 /* Charts --------------------------------------------------------------------- */
 
 .chart { display: block; width: 100%; height: auto; overflow: visible; }
+.matrices { display: flex; flex-wrap: wrap; gap: 1.5rem 3rem; align-items: flex-start; }
+.matrix { margin: 0; flex: 0 1 auto; }
+.matrix figcaption { margin-bottom: 0.4rem; color: var(--bone-dim); font-size: var(--step--1); }
 .chart text { font-family: var(--font); fill: var(--bone-dim); }
 .chart .tick { font-size: 12px; font-variant-numeric: tabular-nums; }
 .chart .tick.cat { font-size: 13px; fill: var(--bone); }

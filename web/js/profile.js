@@ -491,7 +491,8 @@ function confusionMatrix(container, normalized) {
   const xs = recent ? normalized.slice(-T.RULES.confusionWindow) : normalized;
   $("confusion-sub").textContent =
     (recent ? `Last ${xs.length} answers, the ones used to pair confused characters.` : `All ${xs.length} answers.`) +
-    " Rows are the character that played, columns the one typed. Shading is the share of that row's answers.";
+    " By direction: rows are the character that played, columns the one typed, shaded by the share of the row's" +
+    " answers. Either direction: each pair once, shaded by its mix-ups over the answers where either was played.";
   const pairs = S.confusion(xs);
   if (!pairs.length) return emptyNote(container, "No wrong answers in this range.");
   const played = new Map();
@@ -529,8 +530,56 @@ function confusionMatrix(container, normalized) {
     },
   });
   const sorted = [...pairs].sort((a, b) => b.rate - a.rate || b.n - a.n);
-  container.replaceChildren(grid, C.tableView(["Played", "Typed", "Times", "Share of played"],
-    sorted.map((p) => [p.played, p.typed, p.n, pct(p.rate)])));
+
+  // Folded: each pair once, mix-ups in either direction over the answers where either was played.
+  // This is the rate the trainer uses to pair a confused character with the focus.
+  const undirected = new Map();
+  for (const p of pairs) {
+    const [a, b] = KOCH_ORDER.indexOf(p.played) < KOCH_ORDER.indexOf(p.typed) ? [p.played, p.typed] : [p.typed, p.played];
+    const k = `${a}|${b}`;
+    if (!undirected.has(k)) undirected.set(k, { a, b, n: 0 });
+    undirected.get(k).n += p.n;
+  }
+  for (const q of undirected.values()) {
+    q.answers = (played.get(q.a) || 0) + (played.get(q.b) || 0);
+    q.rate = q.n / q.answers;
+  }
+  const maxPair = Math.max(...[...undirected.values()].map((q) => q.rate));
+  const folded = C.heatGrid({
+    rows: chars, cols: chars.length, square: true, rowHeight: 28,
+    colLabel: (c) => chars[c], colLabelsTop: true, label: "Confusions between pairs, in either direction",
+    cell: (r, c) => {
+      if (c > r) return null; // the folded half
+      if (r === c) return { color: grey, title: chars[r], rows: [{ value: "–", label: "same character" }] };
+      const q = undirected.get(`${chars[c]}|${chars[r]}`);
+      const answers = (played.get(chars[r]) || 0) + (played.get(chars[c]) || 0);
+      if (!q) {
+        return { color: colors.lampOff, title: `${chars[c]} and ${chars[r]}`, rows: [{ value: "0", label: "mix-ups" }] };
+      }
+      return {
+        color: red(0.25 + 0.75 * (q.rate / maxPair)),
+        title: `${q.a} and ${q.b}, either way`,
+        rows: [
+          { value: pct(q.rate), label: `of ${answers} ${q.a} or ${q.b} answers` },
+          { value: `${q.n}`, label: q.n === 1 ? "mix-up" : "mix-ups" },
+        ],
+      };
+    },
+  });
+  const pairRows = [...undirected.values()].sort((x, y) => y.rate - x.rate || y.n - x.n);
+  const panel = (title, ...parts) => {
+    const fig = el("figure", { class: "matrix" });
+    fig.append(el("figcaption", {}, title), ...parts);
+    return fig;
+  };
+  const both = el("div", { class: "matrices" });
+  both.append(
+    panel("By direction", grid, C.tableView(["Played", "Typed", "Times", "Share of played"],
+      sorted.map((p) => [p.played, p.typed, p.n, pct(p.rate)]))),
+    panel("Either direction", folded, C.tableView(["Pair", "Mix-ups", "Share of their answers"],
+      pairRows.map((q) => [`${q.a} / ${q.b}`, q.n, pct(q.rate)]))),
+  );
+  container.replaceChildren(both);
 }
 
 // Calendar ----------------------------------------------------------------------
