@@ -8,7 +8,8 @@ import * as C from "./charts.js";
 import { loadHistory } from "./migrations.js";
 
 const $ = (id) => document.getElementById(id);
-const DEFAULTS = { targetRtMs: T.RULES.targetRtMs, dailyGoalMin: 15, palette: "traffic" };
+const DEFAULTS = { targetRtMs: T.RULES.targetRtMs, dailyGoalMin: 15, palette: "traffic", confusionRange: "recent" };
+const RANGES = [["recent", "Recent"], ["all", "All time"]];
 const PALETTES = [["traffic", "Red-yellow-green"], ["amber", "Amber"]];
 const ALL_WRONG = "\u2715";
 
@@ -461,29 +462,65 @@ function morseTree(container, normalized, totals) {
 
 // Confusion matrix --------------------------------------------------------------
 
+function confusionRangeSwitch(normalized) {
+  const box = $("confusion-range");
+  box.replaceChildren(...RANGES.map(([value, text]) => {
+    const b = el("button", { type: "button", role: "radio", "aria-checked": String(settings.confusionRange === value) }, text);
+    b.addEventListener("click", () => {
+      if (settings.confusionRange === value) return;
+      settings.confusionRange = value;
+      store.updateSettings({ confusionRange: value }).catch(() => {});
+      store.addEvent({
+        t: new Date().toISOString(), type: "settings", page: "profile", changes: { confusionRange: value },
+      }).catch(() => {});
+      confusionRangeSwitch(normalized);
+      confusionMatrix($("confusion"), normalized);
+    });
+    return b;
+  }));
+}
+
+/**
+ * Wrong answers by character played and typed. "Recent" covers the same answers
+ * the trainer uses to pair confused characters. Shading is by rate (the share of
+ * the played character's answers that went to the typed one), so characters
+ * played more often do not look worse just for being played more.
+ */
 function confusionMatrix(container, normalized) {
-  const pairs = S.confusion(normalized);
-  if (!pairs.length) return emptyNote(container, "No wrong answers yet.");
+  const recent = settings.confusionRange !== "all";
+  const xs = recent ? normalized.slice(-T.RULES.confusionWindow) : normalized;
+  $("confusion-sub").textContent =
+    (recent ? `Last ${xs.length} answers, the ones used to pair confused characters.` : `All ${xs.length} answers.`) +
+    " Rows are the character that played, columns the one typed. Shading is the share of that row's answers.";
+  const pairs = S.confusion(xs);
+  if (!pairs.length) return emptyNote(container, "No wrong answers in this range.");
+  const played = new Map();
+  for (const a of xs) played.set(a.char, (played.get(a.char) || 0) + 1);
+  for (const p of pairs) p.rate = p.n / played.get(p.played);
   const involved = new Set(pairs.flatMap((p) => [p.played, p.typed]));
   const chars = KOCH_ORDER.filter((c) => involved.has(c));
-  const count = new Map(pairs.map((p) => [`${p.played}>${p.typed}`, p.n]));
-  const max = Math.max(...pairs.map((p) => p.n));
+  const byKey = new Map(pairs.map((p) => [`${p.played}>${p.typed}`, p]));
+  const max = Math.max(...pairs.map((p) => p.rate));
   const red = C.ramp(colors.lampOff, colors.miss);
   const grid = C.heatGrid({
     rows: chars, cols: chars.length, square: true, rowHeight: 28, background: colors.lampOff,
     colLabel: (c) => chars[c], label: "Confusion matrix of wrong answers",
     cell: (r, c) => {
-      const n = count.get(`${chars[r]}>${chars[c]}`);
-      if (!n) return null;
+      const p = byKey.get(`${chars[r]}>${chars[c]}`);
+      if (!p) return null;
       return {
-        color: red(0.25 + 0.75 * (n / max)),
+        color: red(0.25 + 0.75 * (p.rate / max)),
         title: `Played ${chars[r]}, typed ${chars[c]}`,
-        rows: [{ value: `${n}`, label: n === 1 ? "time" : "times" }],
+        rows: [
+          { value: pct(p.rate), label: `of ${played.get(p.played)} ${p.played}s` },
+          { value: `${p.n}`, label: p.n === 1 ? "time" : "times" },
+        ],
       };
     },
   });
-  const sorted = [...pairs].sort((a, b) => b.n - a.n);
-  container.replaceChildren(grid, C.tableView(["Played", "Typed", "Times"], sorted.map((p) => [p.played, p.typed, p.n])));
+  const sorted = [...pairs].sort((a, b) => b.rate - a.rate || b.n - a.n);
+  container.replaceChildren(grid, C.tableView(["Played", "Typed", "Times", "Share of played"],
+    sorted.map((p) => [p.played, p.typed, p.n, pct(p.rate)])));
 }
 
 // Calendar ----------------------------------------------------------------------
@@ -576,6 +613,7 @@ async function boot() {
   perChar($("per-char"), complete, normalized);
   charAverages($("char-avg"), totals);
   hitsAndMisses($("hits"), totals);
+  confusionRangeSwitch(normalized);
   confusionMatrix($("confusion"), normalized);
   data = { complete, normalized, totals };
   drawScaled();

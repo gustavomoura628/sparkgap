@@ -96,7 +96,9 @@ The practice screen also shows, for the last complete lesson:
 The **Profile** page has all-time and today totals, accuracy streaks (longest runs at 100%, 97% and
 95%), a lesson-by-lesson heat map per character, reaction time, accuracy and characters unlocked over
 time, a per-character reaction chart with its learning rate, per-character averages, hits and misses,
-a Morse tree shaded by speed or miss rate, a confusion matrix of wrong answers, and a practice calendar.
+a Morse tree shaded by speed or miss rate, a confusion matrix of wrong answers (the last 300 answers, the ones used to
+pair confused characters, or all time; shaded by the share of the played character's answers), and a practice
+calendar.
 Every chart can be read with the keyboard (focus it, then use the arrow keys) and has a table view.
 Speed and progress colours run from red (slow, 1500 ms) through yellow to green (the target reaction
 time); the **Colours** switch at the top of the profile changes them to a dark-to-amber scale instead.
@@ -116,7 +118,7 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.12.0","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"unlockRtMs":800,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.12.1","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"unlockRtMs":800,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |
