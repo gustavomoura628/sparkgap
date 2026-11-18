@@ -4,8 +4,12 @@ import {
   RULES, currentLevel, mastery, charStats, pickNext, pickNextWithProb, shouldUnlock, weights, speedFraction,
   slowBound, unlockProgress, focusOf,
 } from "../web/js/trainer.js";
+import { LESSON_SIZE } from "../web/js/stats.js";
 
 const attempt = (char, correct, rtMs = 400, level = 2) => ({ char, answer: correct ? char : "?", correct, rtMs, level });
+
+// Enough answers at one level for the overall unlock check (unlockLessons complete lessons).
+const ENOUGH = RULES.unlockLessons * RULES.lessonSize;
 
 function solid(chars, n, level) {
   const out = [];
@@ -22,8 +26,8 @@ test("level comes from the highest level recorded", () => {
 });
 
 test("unlocks after enough accurate attempts on every active character", () => {
-  assert.equal(shouldUnlock(solid(["K", "M"], RULES.windowAll - 1, 2), 2), false);
-  assert.equal(shouldUnlock(solid(["K", "M"], RULES.windowAll, 2), 2), true);
+  assert.equal(shouldUnlock(solid(["K", "M"], ENOUGH - 1, 2), 2), false);
+  assert.equal(shouldUnlock(solid(["K", "M"], ENOUGH, 2), 2), true);
 });
 
 test("answers from earlier levels do not count toward the next unlock", () => {
@@ -34,7 +38,7 @@ test("answers from earlier levels do not count toward the next unlock", () => {
 
 test("the newest character needs its own minimum number of tries", () => {
   // Plenty of answers at the new level, but almost none on the newest character.
-  const history = [...solid(["K", "M"], 60, 3), ...solid(["U"], RULES.minTriesNewest - 1, 3)];
+  const history = [...solid(["K", "M"], ENOUGH, 3), ...solid(["U"], RULES.minTriesNewest - 1, 3)];
   assert.equal(shouldUnlock(history, 3), false);
   history.push(attempt("U", true, 350, 3));
   assert.equal(shouldUnlock(history, 3), true);
@@ -91,7 +95,7 @@ test("speed fraction runs linearly from the slow bound to the target", () => {
 });
 
 test("unlocking needs every character under the unlock ceiling, not the target", () => {
-  const at = (rt) => Array.from({ length: RULES.windowAll }, (_, i) => attempt(i % 2 ? "K" : "M", true, rt, 2));
+  const at = (rt) => Array.from({ length: ENOUGH }, (_, i) => attempt(i % 2 ? "K" : "M", true, rt, 2));
   assert.equal(shouldUnlock(at(RULES.unlockRtMs), 2), true);     // slower than the target, but fluent
   assert.equal(shouldUnlock(at(RULES.unlockRtMs + 50), 2), false);
   assert.equal(shouldUnlock(at(RULES.unlockRtMs + 50), 2, { ...RULES, unlockRtMs: 900 }), true);
@@ -102,7 +106,7 @@ test("unlocking needs every character under the unlock ceiling, not the target",
 test("unlock progress agrees with the unlock check and stays in range", () => {
   const cases = [
     solid(["K", "M"], 10, 2),
-    solid(["K", "M"], RULES.windowAll, 2),
+    solid(["K", "M"], ENOUGH, 2),
     [...solid(["K", "M"], 60, 3), ...solid(["U"], 5, 3)],
     [...solid(["K"], 40, 2), ...Array.from({ length: 8 }, (_, i) => attempt("M", i % 2 === 0))],
   ];
@@ -117,12 +121,12 @@ test("unlock progress agrees with the unlock check and stays in range", () => {
 });
 
 test("unlock progress counts accuracy from the floor and takes each row's weakest part", () => {
-  // M: 15 of 20 correct (75%), fast. Accuracy progress = (0.75 - 0.5) / (0.8 - 0.5).
+  // M: 15 of 20 correct (75%), fast. Accuracy progress = (0.75 - floor) / (threshold - floor).
   const history = [...solid(["K"], 40, 2)];
   for (let i = 0; i < 20; i++) history.push(attempt("M", i % 4 !== 0, 350));
   const m = unlockProgress(history, 2).rows.find((r) => r.kind === "char" && r.char === "M");
   assert.equal(m.ok, false);
-  assert.ok(Math.abs(m.progress - (0.75 - 0.5) / (0.8 - 0.5)) < 1e-9);
+  assert.ok(Math.abs(m.progress - (0.75 - RULES.accFloor) / (RULES.minAccChar - RULES.accFloor)) < 1e-9);
   assert.deepEqual(m.parts.map((x) => x.ok), [true, false, true]);
 });
 
@@ -198,4 +202,36 @@ test("the pick reports the focus it was made with", () => {
 test("there is no focus when every character passes", () => {
   const h = level6().map((a) => ({ ...a, rtMs: 300 }));
   assert.equal(focusOf(h, 6), null);
+});
+
+// Lessons of 50 answers numbered from `id`, each at `acc` accuracy on K and M.
+function lessonsAt(level, id, accs) {
+  const out = [];
+  accs.forEach((acc, j) => {
+    for (let i = 0; i < RULES.lessonSize; i++) {
+      out.push({ ...attempt(i % 2 ? "K" : "M", i < acc * RULES.lessonSize, 350, level), lesson: id + j });
+    }
+  });
+  // Keep the per-character checks clean: finish on correct answers.
+  return out;
+}
+
+test("the lesson size matches the one used for statistics", () => {
+  assert.equal(RULES.lessonSize, LESSON_SIZE);
+});
+
+test("unlocking needs the last complete lessons at 90% together, not each", () => {
+  const tail = (h) => [...h, ...solid(["K", "M"], 40, 2).map((a) => ({ ...a, lesson: 99 }))];
+  // Three perfect lessons and one at 70%: 92.5% together.
+  assert.equal(unlockProgress(tail(lessonsAt(2, 0, [1, 1, 1, 0.7])), 2).rows[0].ok, true);
+  // Two at 70%: 85% together.
+  assert.equal(unlockProgress(tail(lessonsAt(2, 0, [1, 1, 0.7, 0.7])), 2).rows[0].ok, false);
+});
+
+test("lessons that are incomplete or span an unlock do not count", () => {
+  const spanning = lessonsAt(3, 0, [1]).map((a, i) => (i < 10 ? { ...a, level: 2 } : a));
+  const h = [...spanning, ...lessonsAt(3, 1, [1, 1, 1]), ...lessonsAt(3, 4, [1]).slice(0, 49)];
+  const overall = unlockProgress(h, 3).rows[0];
+  assert.equal(overall.parts[0].have, 3);
+  assert.equal(overall.ok, false);
 });

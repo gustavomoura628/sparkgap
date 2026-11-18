@@ -241,9 +241,9 @@ function gateTable(g) {
   table.tHead.append(head);
   const body = el("tbody");
   for (const r of g.rows) {
-    const label = r.kind === "overall" ? `Last ${T.RULES.windowAll} answers`
+    const label = r.kind === "overall" ? `Last ${T.RULES.unlockLessons} lessons`
       : r.kind === "newest" ? `Newest (${r.char})` : r.char;
-    const unit = r.kind === "overall" ? "answers" : "tries";
+    const unit = r.kind === "overall" ? "lessons" : "tries";
     // A row's count is implied by its accuracy ("17/20"), so show it only when it is short.
     const parts = r.parts
       .map((p) => ({ ...p, unit }))

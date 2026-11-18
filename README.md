@@ -22,9 +22,13 @@ The app opens at <http://127.0.0.1:8073/>. Press any key to start.
 ## How it works
 
 - **Koch method.** Lessons start with two characters (`K`, `M`) sent at full speed (20 wpm by default).
-  A new character unlocks after at least 50 answers since the previous unlock, at 90% accuracy or better.
-  The newest character needs 25 tries of its own with 90% on its last 20, and every character needs at
-  least 10 recent tries with 80% over its last 20. Every character's median reaction time over its last
+  A new character unlocks once the last 4 complete lessons played entirely at the current level reach
+  90% accuracy together (200 answers, so one lucky lesson is not enough and one off lesson does not reset
+  the count). The newest character needs 25 tries of its own with 90% on its last 20, and every character
+  needs at least 10 recent tries with 85% over its last 20. The per-character threshold stays below the
+  overall one on purpose: every character has to pass at the same moment, so the chances multiply, and a
+  90% bar on 20 tries would leave a solid learner blocked most of the time by whichever character just had
+  an unlucky miss, more so with every character added. Every character's median reaction time over its last
   20 must also be at or under the unlock ceiling (800 ms by default). Characters follow the LCWO order.
   The ceiling only rules out decoding a character element by element; the faster **target** (500 ms by
   default) is what the lamps, the selection weights and the profile aim for. Reaction time grows with the
@@ -112,7 +116,7 @@ total by the lesson's accuracy, so larger character sets and faster answers scor
 With the server running, history is appended to `data/attempts.jsonl`, one JSON object per answer:
 
 ```json
-{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.11.0","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"unlockRtMs":800,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
+{"t":"2026-01-01T12:00:00.000Z","mode":"letters","char":"K","answer":"K","correct":true,"rtMs":412,"replays":0,"level":2,"wpm":20,"frequency":600,"lesson":0,"durMs":1180,"charMs":540,"copyWpm":12.9,"music":false,"app":"0.12.0","session":"m3x9k2ab4f","pickProb":0.4821,"focus":"M","focusShown":true,"targetRtMs":500,"unlockRtMs":800,"volume":0.5,"blurred":false,"tzOffsetMin":-180,"latencyMs":21.3}
 ```
 
 | Field | Meaning |

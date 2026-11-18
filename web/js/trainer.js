@@ -10,11 +10,12 @@ import { KOCH_ORDER } from "./morse.js";
 
 export const RULES = Object.freeze({
   startLevel: 2,      // characters in the first lesson
-  windowAll: 50,      // answers since the last unlock needed before the next one
-  minAccAll: 0.9,     // accuracy over those answers needed to unlock the next character
+  lessonSize: 50,     // answers in a complete lesson (same as stats.LESSON_SIZE)
+  unlockLessons: 4,   // complete lessons at the current level needed before the next unlock...
+  minAccAll: 0.9,     // ...with at least this accuracy over those lessons together
   windowChar: 20,     // recent attempts per character considered
   minTriesChar: 10,   // each active character needs this many recent tries...
-  minAccChar: 0.8,    // ...at this accuracy before unlocking
+  minAccChar: 0.85,   // ...at this accuracy before unlocking
   minTriesNewest: 25, // the newest character needs this many tries since it was added...
   minAccNewest: 0.9,  // ...and this accuracy over its last windowChar tries
   targetRtMs: 500,    // the reaction time to aim for (lamps, mastery, selection weights)
@@ -66,7 +67,8 @@ export function activeChars(level) {
 /**
  * Every check that gates the next character, with how far along each one is.
  *
- * Rows: the overall window (answers at the current level), the newest
+ * Rows: the overall check (the last unlockLessons complete lessons played
+ * entirely at the current level, taken together), the newest
  * character (tries since it was added), and one row per active character
  * (its last windowChar tries). Each row is made of parts (count, accuracy,
  * speed) with a 0..1 progress; a row's progress is its weakest part, and the
@@ -77,6 +79,20 @@ export function activeChars(level) {
  *
  * Returns null when every character is already unlocked.
  */
+/**
+ * Complete lessons played entirely at `level`, oldest first. Answers without a
+ * lesson number are grouped in order, lessonSize at a time.
+ */
+export function levelLessons(attempts, level, rules = RULES) {
+  const groups = new Map();
+  attempts.forEach((a, i) => {
+    const key = Number.isFinite(a.lesson) ? a.lesson : `n${Math.floor(i / rules.lessonSize)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  });
+  return [...groups.values()].filter((xs) => xs.length >= rules.lessonSize && xs.every((a) => a.level === level));
+}
+
 export function unlockProgress(attempts, level, rules = RULES) {
   if (level >= KOCH_ORDER.length) return null;
   const active = activeChars(level);
@@ -108,11 +124,12 @@ export function unlockProgress(attempts, level, rules = RULES) {
     return { kind, char, parts, ok, progress: ok ? 1 : Math.min(...parts.map((p) => p.progress)) };
   };
 
-  const recent = atLevel.slice(-rules.windowAll);
+  const lessons = levelLessons(attempts, level, rules);
+  const recent = lessons.slice(-rules.unlockLessons).flat();
   const n = charStats(atLevel, newest, rules.windowChar);
   const rows = [
     row("overall", null, [
-      count(recent.length, rules.windowAll),
+      count(lessons.length, rules.unlockLessons),
       accuracy(recent.filter((a) => a.correct).length, recent.length, rules.minAccAll),
     ]),
     row("newest", newest, [count(n.total, rules.minTriesNewest), accuracy(n.correct, n.tries, rules.minAccNewest)]),
