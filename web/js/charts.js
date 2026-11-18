@@ -347,8 +347,9 @@ export function barChart({ cats, values, color, height = 170, yFormat = String, 
  */
 export function heatGrid({
   rows, cols, cell, rowHeight = 16, label, colLabel = (c) => c + 1, square = false, background = null,
+  colLabelsTop = false,
 }) {
-  const m = { l: 40, r: 16, t: 8, b: 26 };
+  const m = colLabelsTop ? { l: 40, r: 16, t: 26, b: 8 } : { l: 40, r: 16, t: 8, b: 26 };
   const cw = square ? rowHeight : (WIDTH - m.l - m.r) / Math.max(cols, 1);
   const W = square ? m.l + cw * cols + m.r : WIDTH;
   const H = m.t + rows.length * rowHeight + m.b;
@@ -388,7 +389,7 @@ export function heatGrid({
   });
   const ticks = square ? [...Array(cols).keys()] : integerTicks(0, cols - 1, 6);
   for (const c of ticks) {
-    svg("text", { x: m.l + c * cw + cw / 2, y: H - 8, class: "tick cat", "text-anchor": "middle" }, root).textContent = colLabel(c);
+    svg("text", { x: m.l + c * cw + cw / 2, y: colLabelsTop ? m.t - 10 : H - 8, class: "tick cat", "text-anchor": "middle" }, root).textContent = colLabel(c);
   }
 
   const outline = svg("rect", { class: "cell-outline", visibility: "hidden", fill: "none" }, root);

@@ -502,10 +502,20 @@ function confusionMatrix(container, normalized) {
   const byKey = new Map(pairs.map((p) => [`${p.played}>${p.typed}`, p]));
   const max = Math.max(...pairs.map((p) => p.rate));
   const red = C.ramp(colors.lampOff, colors.miss);
+  const grey = C.ramp(colors.lampOff, colors.bone)(0.45);
   const grid = C.heatGrid({
     rows: chars, cols: chars.length, square: true, rowHeight: 28, background: colors.lampOff,
-    colLabel: (c) => chars[c], label: "Confusion matrix of wrong answers",
+    colLabel: (c) => chars[c], colLabelsTop: true, label: "Confusion matrix of wrong answers",
     cell: (r, c) => {
+      // The diagonal holds correct answers, which the matrix does not count.
+      if (r === c) {
+        const n = played.get(chars[r]) || 0;
+        const right = xs.filter((a) => a.char === chars[r] && a.correct).length;
+        return {
+          color: grey, title: `Played ${chars[r]}, typed ${chars[r]}`,
+          rows: [{ value: n ? pct(right / n) : "–", label: n ? `correct of ${n}` : "not played in this range" }],
+        };
+      }
       const p = byKey.get(`${chars[r]}>${chars[c]}`);
       if (!p) return null;
       return {
